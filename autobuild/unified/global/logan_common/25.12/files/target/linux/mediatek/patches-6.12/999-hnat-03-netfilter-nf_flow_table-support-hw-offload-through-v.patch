@@ -53,7 +53,7 @@ diff --git a/include/net/netfilter/nf_flow_table.h b/include/net/netfilter/nf_fl
 index 2709725..179f9cb 100644
 --- a/include/net/netfilter/nf_flow_table.h
 +++ b/include/net/netfilter/nf_flow_table.h
-@@ -186,6 +186,17 @@ struct flow_offload {
+@@ -186,6 +186,18 @@ struct flow_offload {
  	struct rcu_head				rcu_head;
  };
  
@@ -63,8 +63,9 @@ index 2709725..179f9cb 100644
 +
 +	u8 eth_src[ETH_ALEN];
 +	u8 eth_dest[ETH_ALEN];
-+	u16 vlan_proto;
-+	u16 vlan_id;
++	__be16 vlan_proto[2];
++	u16 vlan_id[2];
++	u8 num_vlans;
 +	u16 pppoe_sid;
 +};
 +

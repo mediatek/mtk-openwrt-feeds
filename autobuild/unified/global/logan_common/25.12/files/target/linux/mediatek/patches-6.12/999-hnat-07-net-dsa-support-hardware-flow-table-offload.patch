@@ -11,9 +11,10 @@ diff --git a/include/net/netfilter/nf_flow_table.h b/include/net/netfilter/nf_fl
 index 179f9cb..534bbc0 100644
 --- a/include/net/netfilter/nf_flow_table.h
 +++ b/include/net/netfilter/nf_flow_table.h
-@@ -195,6 +195,7 @@ struct flow_offload_hw_path {
- 	u16 vlan_proto;
- 	u16 vlan_id;
+@@ -196,7 +196,8 @@ struct flow_offload_hw_path {
+ 	__be16 vlan_proto[2];
+ 	u16 vlan_id[2];
+ 	u8 num_vlans;
  	u16 pppoe_sid;
 +	u16 dsa_port;
  };

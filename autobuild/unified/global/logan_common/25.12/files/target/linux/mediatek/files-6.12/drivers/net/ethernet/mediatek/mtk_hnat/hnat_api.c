@@ -5,6 +5,7 @@
  */
 
 #include <linux/debugfs.h>
+#include <linux/if_vlan.h>
 #include <linux/module.h>
 
 #include "hnat.h"
@@ -603,34 +604,39 @@ static int hnat_entry_set_vlan(struct foe_entry *entry, void *data)
 	if (!d->vlan1 && d->vlan2)
 		return HNAT_FAIL;
 
-	if (IS_IPV4_GRP(entry)) {
-		vlan1 = &entry->ipv4_hnapt.vlan1;
-		vlan2 = &entry->ipv4_hnapt.vlan2;
-		sp_tag = &entry->ipv4_hnapt.sp_tag;
-	} else if (IS_IPV6_GRP(entry)) {
-		vlan1 = &entry->ipv6_5t_route.vlan1;
-		vlan2 = &entry->ipv6_5t_route.vlan2;
-		sp_tag = &entry->ipv6_5t_route.sp_tag;
-	} else {
+	if (hnat_entry_vlan_fields(entry, &vlan1, &vlan2, &sp_tag))
 		return HNAT_FAIL;
-	}
 
 	vlan_layer = (d->vlan1 != 0) + (d->vlan2 != 0);
 	new_sp_tag = *sp_tag;
 
-	/* MTK special tag counts as one VLAN layer, BIT(8) flags a VLAN behind it.
-	 * NOTE: tag_8021q DSA (DSA tag in vlan1) is not handled.
+	/* Update VIDs only, keep the existing TPID. sp_tag is the outer TPID,
+	 * the ethertype (untagged) or the MTK special tag (shares a layer with
+	 * vlan1, see hnat_dsa_fill_stag()).
+	 * NOTE: tag_8021q DSA is not handled.
 	 */
-	if (entry->bfib1.vlan_layer && *sp_tag != ETH_P_8021Q) {
-		if (vlan_layer) {
-			new_sp_tag |= BIT(8);
-		} else {
-			new_sp_tag &= ~BIT(8);
+	if (!eth_type_vlan(htons(*sp_tag))) {
+		if (!entry->bfib1.vlan_layer) {
+			/* Untagged entry, sp_tag is the ethertype.
+			 * Adding VLANs: set outer TPID to 802.1Q.
+			 */
+			if (vlan_layer)
+				new_sp_tag = ETH_P_8021Q;
+		} else if (!vlan_layer) {
+			/* Special tag entry, removing all VLANs: clear the TPID
+			 * bit, the special tag still takes one layer.
+			 */
+			new_sp_tag &= ~HNAT_STAG_TPID_MASK;
 			vlan_layer = 1;
+		} else if (!(new_sp_tag & HNAT_STAG_TPID_MASK)) {
+			/* Special tag entry without VLAN, adding VLANs: set the
+			 * 802.1Q TPID bit so vlan1 shares the special tag layer.
+			 */
+			new_sp_tag |= HNAT_STAG_TPID_8021Q;
 		}
-	} else if (vlan_layer) {
-		new_sp_tag = ETH_P_8021Q;
+		/* else: special tag entry with VLAN, keep its TPID bit */
 	}
+	/* else: VLAN entry, keep its outer TPID (802.1Q/802.1ad) */
 
 	/* Prevent unnecessary update */
 	if (entry->bfib1.vlan_layer == vlan_layer && *sp_tag == new_sp_tag &&

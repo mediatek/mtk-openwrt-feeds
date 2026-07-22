@@ -1442,8 +1442,10 @@ enum FoeIpAct {
 			    strcmp(dev->name, "lan5"))
 #define IS_DSA_WAN(dev) (!strncmp(dev->name, "wan", 3))
 #define IS_DSA_TAG_PROTO_8021Q(dp)				        \
-	(dp->cpu_dp->tag_ops->proto == DSA_TAG_PROTO_8021Q ||		\
-	 dp->cpu_dp->tag_ops->proto == DSA_TAG_PROTO_MXL862_8021Q)
+	((dp)->cpu_dp->tag_ops->proto == DSA_TAG_PROTO_8021Q ||		\
+	 (dp)->cpu_dp->tag_ops->proto == DSA_TAG_PROTO_MXL862_8021Q)
+#define IS_DSA_TAG_PROTO_MTK(dp)				        \
+	((dp)->cpu_dp->tag_ops->proto == DSA_TAG_PROTO_MTK)
 #define NONE_DSA_PORT 0xff
 #define MAX_CRSN_NUM 32
 #define IPV6_HDR_LEN 40
@@ -1472,8 +1474,31 @@ enum FoeIpAct {
 #define NEIGH_UPDATE_WORK_DELAY_MS	300
 #define NEIGH_PROCESS_BUDGET		128
 
+/* MTK special tag in sp_tag: TPID of the VLAN sharing its layer (tag_mtk.c) */
+#define HNAT_STAG_TPID_8021Q		BIT(8)
+#define HNAT_STAG_TPID_8021AD		BIT(9)
+#define HNAT_STAG_TPID_MASK		(HNAT_STAG_TPID_8021Q | HNAT_STAG_TPID_8021AD)
+
 extern const struct of_device_id of_hnat_match[];
 extern struct mtk_hnat *hnat_priv;
+
+static inline int hnat_entry_vlan_fields(struct foe_entry *entry, u16 **vlan1,
+					 u16 **vlan2, u16 **sp_tag)
+{
+	if (IS_IPV4_GRP(entry) || IS_L2_BRIDGE(entry)) {
+		*vlan1 = &entry->ipv4_hnapt.vlan1;
+		*vlan2 = &entry->ipv4_hnapt.vlan2;
+		*sp_tag = &entry->ipv4_hnapt.sp_tag;
+	} else if (IS_IPV6_GRP(entry)) {
+		*vlan1 = &entry->ipv6_5t_route.vlan1;
+		*vlan2 = &entry->ipv6_5t_route.vlan2;
+		*sp_tag = &entry->ipv6_5t_route.sp_tag;
+	} else {
+		return -EINVAL;
+	}
+
+	return 0;
+}
 
 int hnat_dsa_fill_stag(const struct net_device *netdev,
 		       struct foe_entry *entry,

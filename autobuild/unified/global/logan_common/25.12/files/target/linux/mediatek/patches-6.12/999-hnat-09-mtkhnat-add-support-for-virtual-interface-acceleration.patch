@@ -23,18 +23,6 @@ index 534bbc0..921a679 100644
  	u32 flags;
  
  	u8 eth_src[ETH_ALEN];
-diff --git a/net/8021q/vlan_dev.c b/net/8021q/vlan_dev.c
-index 11170bc..98daca5 100644
---- a/net/8021q/vlan_dev.c
-+++ b/net/8021q/vlan_dev.c
-@@ -1018,6 +1018,7 @@ static int vlan_dev_flow_offload_check(struct flow_offload_hw_path *path)
- 	path->flags |= BIT(DEV_PATH_VLAN);
- 	path->vlan_proto = vlan->vlan_proto;
- 	path->vlan_id = vlan->vlan_id;
-+	path->virt_dev = dev;
- 	path->dev = vlan->real_dev;
- 
- 	if (vlan->real_dev->netdev_ops->ndo_flow_offload_check)
 diff --git a/net/ipv6/ip6_tunnel.c b/net/ipv6/ip6_tunnel.c
 index be98274..f6bb32c 100644
 --- a/net/ipv6/ip6_tunnel.c

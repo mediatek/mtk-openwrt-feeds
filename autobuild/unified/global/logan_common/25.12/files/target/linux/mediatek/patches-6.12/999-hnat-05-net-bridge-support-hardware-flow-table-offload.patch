@@ -44,7 +44,7 @@ index 3768cc9..199ba8a 100644
 +	if (!(path->flags & BIT(DEV_PATH_ETHERNET)))
 +		return -EINVAL;
 +
-+	f = br_fdb_find_rcu(br, path->eth_dest, path->vlan_id);
++	f = br_fdb_find_rcu(br, path->eth_dest, path->vlan_id[0]);
 +	if (!f)
 +		return -ENOENT;
 +

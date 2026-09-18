@@ -1,0 +1,634 @@
+--- /dev/null
++++ b/include/u-boot/mldsa.h
+@@ -0,0 +1,56 @@
++/* SPDX-License-Identifier: GPL-2.0+ */
++/*
++ * Copyright (C) 2026 MediaTek Inc.
++ */
++
++#ifndef _MLDSA_H
++#define _MLDSA_H
++
++#include <image.h>
++
++/**
++ * mldsa_sign() - Sign FIT regions with ML-DSA
++ *
++ * @info:		Key and FIT information
++ * @region:		Image regions to sign (the message)
++ * @region_count:	Number of regions
++ * @sigp:		Set to an allocated buffer holding the signature
++ * @sig_len:		Set to the signature length
++ *
++ * Return: 0 on success, -ve on error. Caller frees *sigp.
++ */
++int mldsa_sign(struct image_sign_info *info, const struct image_region region[],
++	       int region_count, uint8_t **sigp, uint *sig_len);
++
++/**
++ * mldsa_add_verify_data() - Add verification information to FDT
++ *
++ * @info:	Key and FIT information
++ * @keydest:	Destination FDT blob for public key data
++ *
++ * Return: node offset written on success, -ENOSPC if out of space, other -ve
++ *	on error.
++ */
++int mldsa_add_verify_data(struct image_sign_info *info, void *keydest);
++
++/**
++ * mldsa_verify() - Verify a ML-DSA signature against FIT regions
++ *
++ * @info:		Key and FIT information
++ * @region:		Image regions that were signed
++ * @region_count:	Number of regions
++ * @sig:		Signature
++ * @sig_len:		Number of bytes in signature
++ *
++ * Return: 0 if verified, -ve on error.
++ */
++int mldsa_verify(struct image_sign_info *info,
++		 const struct image_region region[], int region_count,
++		 uint8_t *sig, uint sig_len);
++
++/* ML-DSA-87 (FIPS 204 level 5) sizes, in bytes */
++#define MLDSA87_PK_BYTES	2592
++#define MLDSA87_SK_BYTES	4896
++#define MLDSA87_SIG_BYTES	4627
++
++#endif /* _MLDSA_H */
+--- /dev/null
++++ b/lib/mldsa/mldsa-libcrypto.c
+@@ -0,0 +1,467 @@
++// SPDX-License-Identifier: GPL-2.0+
++/*
++ * Copyright (C) 2026 MediaTek Inc.
++ *
++ * ML-DSA (FIPS 204) image signing implementation using libcrypto backend
++ */
++
++#define OPENSSL_API_COMPAT 0x10101000L
++
++#include <openssl/opensslv.h>
++
++#if OPENSSL_VERSION_NUMBER < 0x30500000L
++#error "ML-DSA requires OpenSSL 3.5.0 or later"
++#endif
++
++#include <image.h>
++#include <u-boot/mldsa.h>
++
++#include <openssl/core_names.h>
++#include <openssl/evp.h>
++#include <openssl/params.h>
++#include <openssl/pem.h>
++#include <openssl/x509.h>
++
++#define MLDSA_ALG_NAME		"ML-DSA-87"
++
++static int mldsa_pem_get_privkey(const char *keydir, const char *name,
++				 EVP_PKEY **evpp)
++{
++	char path[1024] = { 0 };
++	EVP_PKEY *key = NULL;
++	FILE *f;
++	int len;
++
++	if (!keydir || !name)
++		return -EINVAL;
++
++	*evpp = NULL;
++	len = snprintf(path, sizeof(path), "%s/%s.key", keydir, name);
++	if (len < 0 || len >= sizeof(path))
++		return -EINVAL;
++
++	f = fopen(path, "r");
++	if (!f) {
++		fprintf(stderr, "Couldn't open ML-DSA private key: '%s': %s\n",
++			path, strerror(errno));
++		return -ENOENT;
++	}
++
++	if (!PEM_read_PrivateKey(f, &key, NULL, NULL)) {
++		fprintf(stderr, "Couldn't read private key: '%s'\n", path);
++		fclose(f);
++		return -EINVAL;
++	}
++
++	if (EVP_PKEY_is_a(key, MLDSA_ALG_NAME) != 1) {
++		fprintf(stderr, "Invalid private key for ML-DSA\n");
++		EVP_PKEY_free(key);
++		fclose(f);
++		return -EINVAL;
++	}
++
++	*evpp = key;
++	fclose(f);
++
++	return 0;
++}
++
++static int mldsa_pem_get_pubkey(const char *keydir, const char *name,
++				EVP_PKEY **evpp)
++{
++	char path[1024] = { 0 };
++	EVP_PKEY *key = NULL;
++	X509 *cert = NULL;
++	int ret = 0;
++	int len;
++	FILE *f;
++
++	if (!keydir || !name)
++		return -EINVAL;
++
++	*evpp = NULL;
++	len = snprintf(path, sizeof(path), "%s/%s.crt", keydir, name);
++	if (len < 0 || len >= sizeof(path))
++		return -EINVAL;
++
++	f = fopen(path, "r");
++	if (!f) {
++		fprintf(stderr, "Couldn't open ML-DSA certificate: '%s': %s\n",
++			path, strerror(errno));
++		return -ENOENT;
++	}
++
++	/* Read the certificate */
++	if (!PEM_read_X509(f, &cert, NULL, NULL)) {
++		fprintf(stderr, "Couldn't read certificate: '%s'\n", path);
++		fclose(f);
++		return -EINVAL;
++	}
++
++	/* Get the public key from the certificate. */
++	key = X509_get_pubkey(cert);
++	if (!key) {
++		fprintf(stderr, "Couldn't read public key\n");
++		ret = -EINVAL;
++		goto out;
++	}
++
++	if (EVP_PKEY_is_a(key, MLDSA_ALG_NAME) != 1) {
++		fprintf(stderr, "Invalid public key for ML-DSA\n");
++		ret = -EINVAL;
++		EVP_PKEY_free(key);
++		goto out;
++	}
++
++	*evpp = key;
++
++out:
++	X509_free(cert);
++	fclose(f);
++
++	return ret;
++}
++
++static int fdt_get_pubkey(const void *fdt, int node, int expected_len,
++			  const uint8_t **pkp, int *lenp)
++{
++	const uint8_t *pk;
++
++	if (!fdt)
++		return -EINVAL;
++
++	pk = fdt_getprop(fdt, node, "mldsa,pubkey", lenp);
++	if (!pk) {
++		fprintf(stderr, "No 'mldsa,pubkey' in node %d\n", node);
++		return -ENOENT;
++	}
++
++	if (*lenp != expected_len) {
++		fprintf(stderr, "Bad public key length %d (expected %d)\n",
++			*lenp, expected_len);
++		return -EINVAL;
++	}
++
++	*pkp = pk;
++
++	return 0;
++}
++
++static int mldsa_fdt_get_pubkey(const struct image_sign_info *info,
++				const uint8_t **pkp, int *lenp)
++{
++	const void *fdt = info->fdt_blob;
++	int sig_node, key_node;
++	int expected_len;
++
++	if (!fdt || !info->crypto)
++		return -EINVAL;
++
++	expected_len = info->crypto->key_len;
++
++	if (info->required_keynode >= 0)
++		return fdt_get_pubkey(fdt, info->required_keynode, expected_len, pkp, lenp);
++
++	sig_node = fdt_subnode_offset(fdt, 0, FIT_SIG_NODENAME);
++	if (sig_node < 0)
++		return -ENOENT;
++
++	if (info->keyname) {
++		key_node = fdt_subnode_offset(fdt, sig_node, info->keyname);
++		if (key_node >= 0)
++			return fdt_get_pubkey(fdt, key_node, expected_len, pkp, lenp);
++	}
++
++	fdt_for_each_subnode(key_node, fdt, sig_node) {
++		if (!fdt_get_pubkey(fdt, key_node, expected_len, pkp, lenp))
++			return 0;
++	}
++
++	return -ENOENT;
++}
++
++static int load_pubkey_from_raw(const uint8_t *pk, int pk_len, EVP_PKEY **evpp)
++{
++	OSSL_PARAM params[2] = { 0 };
++	EVP_PKEY *key = NULL;
++	EVP_PKEY_CTX *ctx;
++	int ret = 0;
++
++	*evpp = NULL;
++
++	ctx = EVP_PKEY_CTX_new_from_name(NULL, MLDSA_ALG_NAME, NULL);
++	if (!ctx)
++		return -EINVAL;
++
++	params[0] = OSSL_PARAM_construct_octet_string(OSSL_PKEY_PARAM_PUB_KEY,
++						      (void *)pk, pk_len);
++	params[1] = OSSL_PARAM_construct_end();
++
++	if (EVP_PKEY_fromdata_init(ctx) != 1) {
++		ret = -EINVAL;
++		goto out;
++	}
++
++	if (EVP_PKEY_fromdata(ctx, &key, EVP_PKEY_PUBLIC_KEY, params) != 1) {
++		ret = -EINVAL;
++		goto out;
++	}
++
++	*evpp = key;
++
++out:
++	EVP_PKEY_CTX_free(ctx);
++
++	return ret;
++}
++
++static int mldsa_get_pubkey_from_fdt(const struct image_sign_info *info,
++				     EVP_PKEY **evpp)
++{
++	const uint8_t *pk = NULL;
++	int pk_len = 0;
++	int ret;
++
++	ret = mldsa_fdt_get_pubkey(info, &pk, &pk_len);
++	if (ret)
++		return ret;
++
++	return load_pubkey_from_raw(pk, pk_len, evpp);
++}
++
++static int mldsa_get_message(const struct image_region region[],
++			     int region_count, uint8_t **msgp, size_t *lenp)
++{
++	size_t total = 0;
++	uint8_t *buf, *p;
++	int i;
++
++	for (i = 0; i < region_count; i++) {
++		if (!region[i].data || region[i].size <= 0 ||
++		    total > ULONG_MAX - region[i].size)
++			return -EINVAL;
++		total += region[i].size;
++	}
++
++	if (!total)
++		return -EINVAL;
++
++	buf = malloc(total);
++	if (!buf)
++		return -ENOMEM;
++
++	for (i = 0, p = buf; i < region_count; i++) {
++		memcpy(p, region[i].data, region[i].size);
++		p += region[i].size;
++	}
++
++	*msgp = buf;
++	*lenp = total;
++
++	return 0;
++}
++
++static int mldsa_sign_with_key(EVP_PKEY *pkey,
++			       const struct image_region region[],
++			       int region_count, uint8_t **sigp, uint *sig_len)
++{
++	uint8_t *msg = NULL, *sig = NULL;
++	size_t msg_len = 0, slen = 0;
++	EVP_MD_CTX *mctx;
++	int ret;
++
++	ret = mldsa_get_message(region, region_count, &msg, &msg_len);
++	if (ret)
++		return ret;
++
++	mctx = EVP_MD_CTX_new();
++	if (!mctx) {
++		free(msg);
++		return -ENOMEM;
++	}
++
++	if (EVP_DigestSignInit_ex(mctx, NULL, NULL, NULL, NULL, pkey, NULL) != 1) {
++		ret = -EIO;
++		goto out;
++	}
++
++	if (EVP_DigestSign(mctx, NULL, &slen, msg, msg_len) != 1) {
++		ret = -EIO;
++		goto out;
++	}
++
++	sig = malloc(slen);
++	if (!sig) {
++		ret = -ENOMEM;
++		goto out;
++	}
++
++	if (EVP_DigestSign(mctx, sig, &slen, msg, msg_len) != 1) {
++		free(sig);
++		ret = -EIO;
++		goto out;
++	}
++
++	*sigp = sig;
++	*sig_len = slen;
++
++out:
++	EVP_MD_CTX_free(mctx);
++	free(msg);
++
++	return ret;
++}
++
++int mldsa_sign(struct image_sign_info *info,
++	       const struct image_region region[],
++	       int region_count, uint8_t **sigp, uint *sig_len)
++{
++	EVP_PKEY *key = NULL;
++	int ret;
++
++	if (!info || !region || region_count <= 0 || !sigp || !sig_len)
++		return -EINVAL;
++
++	ret = mldsa_pem_get_privkey(info->keydir, info->keyname, &key);
++	if (ret)
++		return ret;
++
++	ret = mldsa_sign_with_key(key, region, region_count, sigp, sig_len);
++
++	EVP_PKEY_free(key);
++
++	return ret;
++}
++
++static int mldsa_verify_with_key(EVP_PKEY *pkey,
++				 const struct image_region region[],
++				 int region_count, const uint8_t *sig, uint sig_len)
++{
++	EVP_MD_CTX *mctx;
++	uint8_t *msg = NULL;
++	size_t msg_len = 0;
++	int ret;
++
++	if (sig_len != MLDSA87_SIG_BYTES) {
++		fprintf(stderr, "Bad signature length %u (expected %u)\n",
++			sig_len, MLDSA87_SIG_BYTES);
++		return -EINVAL;
++	}
++
++	ret = mldsa_get_message(region, region_count, &msg, &msg_len);
++	if (ret)
++		return ret;
++
++	mctx = EVP_MD_CTX_new();
++	if (!mctx) {
++		free(msg);
++		return -ENOMEM;
++	}
++
++	if (EVP_DigestVerifyInit_ex(mctx, NULL, NULL, NULL, NULL, pkey, NULL) != 1) {
++		ret = -EIO;
++		goto out;
++	}
++
++	if (EVP_DigestVerify(mctx, sig, sig_len, msg, msg_len) != 1)
++		ret = -EBADMSG;
++
++out:
++	EVP_MD_CTX_free(mctx);
++	free(msg);
++
++	return ret;
++}
++
++int mldsa_verify(struct image_sign_info *info,
++		 const struct image_region region[], int region_count,
++		 uint8_t *sig, uint sig_len)
++{
++	EVP_PKEY *key = NULL;
++	int ret;
++
++	if (!info || !region || region_count <= 0 || !sig || !sig_len)
++		return -EINVAL;
++
++	ret = mldsa_get_pubkey_from_fdt(info, &key);
++	if (ret)
++		return ret;
++
++	ret = mldsa_verify_with_key(key, region, region_count, sig, sig_len);
++
++	EVP_PKEY_free(key);
++
++	return ret;
++}
++
++int mldsa_add_verify_data(struct image_sign_info *info, void *keydest)
++{
++	uint8_t pk[MLDSA87_PK_BYTES] = { 0 };
++	EVP_PKEY *key = NULL;
++	size_t pk_len = 0;
++	int parent, node;
++	int ret;
++
++	if (!info || !info->name || !info->keyname || !info->keydir ||
++	    !info->crypto || !keydest)
++		return -EINVAL;
++
++	ret = mldsa_pem_get_pubkey(info->keydir, info->keyname, &key);
++	if (ret)
++		return ret;
++
++	if (EVP_PKEY_get_octet_string_param(key, OSSL_PKEY_PARAM_PUB_KEY,
++					    pk, sizeof(pk), &pk_len) != 1) {
++		ret = -EINVAL;
++		goto out;
++	}
++
++	if (pk_len != info->crypto->key_len) {
++		fprintf(stderr, "bad public key length %zu (expected %d)\n",
++			pk_len, info->crypto->key_len);
++		ret = -EINVAL;
++		goto out;
++	}
++
++	parent = fdt_subnode_offset(keydest, 0, FIT_SIG_NODENAME);
++	if (parent == -FDT_ERR_NOTFOUND)
++		parent = fdt_add_subnode(keydest, 0, FIT_SIG_NODENAME);
++	if (parent < 0) {
++		ret = parent;
++		goto out;
++	}
++
++	node = fdt_subnode_offset(keydest, parent, info->keyname);
++	if (node == -FDT_ERR_NOTFOUND)
++		node = fdt_add_subnode(keydest, parent, info->keyname);
++	if (node < 0) {
++		ret = node;
++		goto out;
++	}
++
++	ret = fdt_setprop_string(keydest, node, FIT_KEY_HINT, info->keyname);
++	if (ret)
++		goto out;
++
++	ret = fdt_setprop(keydest, node, "mldsa,pubkey", pk, pk_len);
++	if (ret)
++		goto out;
++
++	ret = fdt_setprop_string(keydest, node, FIT_ALGO_PROP, info->name);
++	if (ret)
++		goto out;
++
++	if (info->require_keys) {
++		ret = fdt_setprop_string(keydest, node, FIT_KEY_REQUIRED,
++					 info->require_keys);
++	}
++
++out:
++	EVP_PKEY_free(key);
++	if (ret == -FDT_ERR_NOSPACE)
++		ret = -ENOSPC;
++	if (ret)
++		return ret;
++
++	return node;
++}
+--- a/tools/image-sig-host.c
++++ b/tools/image-sig-host.c
+@@ -9,6 +9,7 @@
+ #include <linux/libfdt.h>
+ #include <image.h>
+ #include <u-boot/ecdsa.h>
++#include <u-boot/mldsa.h>
+ #include <u-boot/rsa.h>
+ #include <u-boot/hash-checksum.h>
+ 
+@@ -90,6 +91,14 @@ struct crypto_algo crypto_algos[] = {
+ 		.add_verify_data = ecdsa_add_verify_data,
+ 		.verify = ecdsa_verify,
+ 	},
++	{
++		.name = "mldsa87",
++		.key_len = MLDSA87_PK_BYTES,
++		.no_checksum = true,
++		.sign = mldsa_sign,
++		.add_verify_data = mldsa_add_verify_data,
++		.verify = mldsa_verify,
++	},
+ };
+ 
+ struct padding_algo padding_algos[] = {
+@@ -124,11 +133,12 @@ struct crypto_algo *image_get_crypto_alg
+ 	int i;
+ 	const char *name;
+ 
+-	/* Move name to after the comma */
++	/* Move name to after the comma or use full name */
+ 	name = strchr(full_name, ',');
+ 	if (!name)
+-		return NULL;
+-	name += 1;
++		name = full_name;
++	else
++		name += 1;
+ 
+ 	for (i = 0; i < ARRAY_SIZE(crypto_algos); i++) {
+ 		if (!strcmp(crypto_algos[i].name, name))
+--- a/tools/Makefile
++++ b/tools/Makefile
+@@ -102,6 +102,10 @@ ECDSA_OBJS-$(CONFIG_TOOLS_LIBCRYPTO) :=
+ HOSTCFLAGS_ecdsa-libcrypto.o += \
+ 	$(shell pkg-config --cflags libssl libcrypto 2> /dev/null || echo "")
+ 
++MLDSA_OBJS-$(CONFIG_TOOLS_LIBCRYPTO) := $(addprefix generated/lib/mldsa/, mldsa-libcrypto.o)
++HOSTCFLAGS_mldsa-libcrypto.o += \
++	$(shell pkg-config --cflags libssl libcrypto 2> /dev/null || echo "")
++
+ AES_OBJS-$(CONFIG_TOOLS_LIBCRYPTO) := $(addprefix generated/lib/aes/, \
+ 					aes-encrypt.o aes-decrypt.o)
+ 
+@@ -167,6 +171,7 @@ dumpimage-mkimage-objs := aisimage.o \
+ 			mtk_image.o \
+ 			mtk_nand_headers.o \
+ 			$(ECDSA_OBJS-y) \
++			$(MLDSA_OBJS-y) \
+ 			$(RSA_OBJS-y) \
+ 			$(AES_OBJS-y)
+ 
+--- a/tools/fit_image.c
++++ b/tools/fit_image.c
+@@ -49,8 +49,8 @@ static int fit_estimate_hash_sig_size(st
+ 	 * fdt structure overhead (the tags and the name of the
+ 	 * "value" property).
+ 	 *
+-	 * The estimate for a signature node is based on an rsa4096
+-	 * signature being 512 bytes, with another 512 bytes to
++	 * The estimate for a signature node is based on an mldsa87
++	 * signature being 4627 bytes, with another 1517 bytes to
+ 	 * account for fdt overhead and the various other properties
+ 	 * (hashed-nodes etc.) that will also be filled in.
+ 	 *
+@@ -74,7 +74,7 @@ static int fit_estimate_hash_sig_size(st
+ 			estimate += 128;
+ 
+ 		if (signing && !strncmp(name, FIT_SIG_NODENAME, strlen(FIT_SIG_NODENAME)))
+-			estimate += 1024;
++			estimate += 6144;
+ 	}
+ 
+ 	munmap(fdt, sbuf.st_size);
+--- a/include/image.h
++++ b/include/image.h
+@@ -1545,6 +1545,7 @@ struct checksum_algo {
+ struct crypto_algo {
+ 	const char *name;		/* Name of algorithm */
+ 	const int key_len;
++	bool no_checksum;
+ 
+ 	/**
+ 	 * sign() - calculate and return signature for given input data
+--- a/tools/image-host.c
++++ b/tools/image-host.c
+@@ -200,7 +200,7 @@ static int fit_image_setup_sig(struct im
+ 	info->padding = image_get_padding_algo(padding_name);
+ 	info->require_keys = require_keys;
+ 	info->engine_id = engine_id;
+-	if (!info->checksum || !info->crypto) {
++	if (!info->crypto || (!info->checksum && !info->crypto->no_checksum)) {
+ 		fprintf(stderr,
+ 			"Unsupported signature algorithm (%s) for '%s' signature node in '%s' image node\n",
+ 			algo_name, node_name, image_name);

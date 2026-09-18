@@ -1,0 +1,19 @@
+--- a/tools/Makefile
++++ b/tools/Makefile
+@@ -60,6 +60,7 @@ tools-y += mklibs
+ tools-y += mtd-utils
+ tools-y += mtools
+ tools-y += ninja
++tools-y += openssl
+ tools-y += padjffs2
+ tools-y += patch-image
+ tools-y += patchelf
+@@ -122,7 +123,7 @@ $(curdir)/llvm-bpf/compile := $(curdir)/
+ $(curdir)/make-ext4fs/compile := $(curdir)/zlib/compile
+ $(curdir)/meson/compile := $(curdir)/ninja/compile
+ $(curdir)/missing-macros/compile := $(curdir)/autoconf/compile
+-$(curdir)/mkimage/compile += $(curdir)/bison/compile $(curdir)/libressl/compile
++$(curdir)/mkimage/compile += $(curdir)/bison/compile $(curdir)/libressl/compile $(curdir)/openssl/compile
+ $(curdir)/mklibs/compile := $(curdir)/libtool/compile
+ $(curdir)/mold/compile := $(curdir)/cmake/compile $(curdir)/zlib/compile $(curdir)/zstd/compile
+ $(curdir)/mpc/compile := $(curdir)/mpfr/compile $(curdir)/gmp/compile

@@ -1,0 +1,35 @@
+--- a/tools/Makefile
++++ b/tools/Makefile
+@@ -76,6 +76,14 @@ FIT_OBJS-y := fit_common.o fit_image.o i
+ FIT_SIG_OBJS-$(CONFIG_TOOLS_LIBCRYPTO) := image-sig-host.o generated/boot/image-fit-sig.o
+ FIT_CIPHER_OBJS-$(CONFIG_TOOLS_LIBCRYPTO) := generated/boot/image-cipher.o
+ 
++ifneq ($(TOOLS_LIBCRYPTO_DIR),)
++TOOLS_LIBCRYPTO_LIBS := $(TOOLS_LIBCRYPTO_DIR)/lib/libssl.a \
++			$(TOOLS_LIBCRYPTO_DIR)/lib/libcrypto.a -lpthread -ldl
++else
++TOOLS_LIBCRYPTO_LIBS := \
++	$(shell pkg-config --libs libssl libcrypto 2> /dev/null || echo "-lssl -lcrypto")
++endif
++
+ HOSTCFLAGS_image-host.o += \
+ 	$(shell pkg-config --cflags libssl libcrypto 2> /dev/null || echo "")
+ 
+@@ -191,7 +199,7 @@ ifneq ($(CONFIG_MX23)$(CONFIG_MX28)$(CON
+ HOSTCFLAGS_kwbimage.o += \
+ 	$(shell pkg-config --cflags libssl libcrypto 2> /dev/null || echo "")
+ HOSTLDLIBS_mkimage += \
+-	$(shell pkg-config --libs libssl libcrypto 2> /dev/null || echo "-lssl -lcrypto")
++	$(TOOLS_LIBCRYPTO_LIBS)
+ 
+ # OS X deprecate openssl in favour of CommonCrypto, supress deprecation
+ # warnings on those systems
+@@ -210,7 +218,7 @@ HOSTLDLIBS_fit_check_sign := $(HOSTLDLIB
+ HOSTLDLIBS_fdt_add_pubkey := $(HOSTLDLIBS_mkimage)
+ HOSTLDLIBS_preload_check_sign := $(HOSTLDLIBS_mkimage)
+ HOSTLDLIBS_preload_check_sign += \
+-	$(shell pkg-config --libs libssl libcrypto 2> /dev/null || echo "-lssl -lcrypto")
++	$(TOOLS_LIBCRYPTO_LIBS)
+ 
+ hostprogs-$(CONFIG_EXYNOS5250) += mkexynosspl
+ hostprogs-$(CONFIG_EXYNOS5420) += mkexynosspl

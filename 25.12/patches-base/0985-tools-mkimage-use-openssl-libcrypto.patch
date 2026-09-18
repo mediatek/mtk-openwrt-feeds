@@ -1,0 +1,27 @@
+--- a/tools/mkimage/Makefile
++++ b/tools/mkimage/Makefile
+@@ -20,12 +20,16 @@ HOST_BUILD_DIR:=$(BUILD_DIR_HOST)/u-boot
+ 
+ include $(INCLUDE_DIR)/host-build.mk
+ 
++TOOLS_LIBCRYPTO_DIR:=$(STAGING_DIR_HOST)/openssl
++HOST_CFLAGS:=-I$(TOOLS_LIBCRYPTO_DIR)/include $(HOST_CFLAGS)
++
+ define Host/Configure
+ 	$(MAKE) -C $(HOST_BUILD_DIR) \
+ 		HOSTCFLAGS="$(HOST_CFLAGS)" \
+ 		HOSTLDFLAGS="$(HOST_LDFLAGS)" \
+ 		PKG_CONFIG_EXTRAARGS="--static" \
+ 		V=$(if $(findstring c,$(OPENWRT_VERBOSE)),1) \
++		TOOLS_LIBCRYPTO_DIR="$(TOOLS_LIBCRYPTO_DIR)" \
+ 		tools-only_config
+ 
+ 	sed -i 's/CONFIG_TOOLS_MKEFICAPSULE=y/# CONFIG_TOOLS_MKEFICAPSULE is not set/' $(HOST_BUILD_DIR)/.config
+@@ -37,6 +41,7 @@ define Host/Compile
+ 		HOSTLDFLAGS="$(HOST_LDFLAGS)" \
+ 		PKG_CONFIG_EXTRAARGS="--static" \
+ 		V=$(if $(findstring c,$(OPENWRT_VERBOSE)),1) \
++		TOOLS_LIBCRYPTO_DIR="$(TOOLS_LIBCRYPTO_DIR)" \
+ 		tools-only
+ endef
+ 

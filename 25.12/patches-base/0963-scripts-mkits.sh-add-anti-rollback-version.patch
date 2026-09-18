@@ -1,31 +1,31 @@
 --- a/scripts/mkits.sh
 +++ b/scripts/mkits.sh
-@@ -39,6 +39,7 @@ usage() {
- 	printf "\n\t-S ==> add signature at configurations with hint 'sign_key_name'"
- 	printf "\n\t-b ==> set signature algorithm to 'sign_algo'"
+@@ -41,6 +41,7 @@ usage() {
+ 	printf "\n\t-P ==> add pqc signature at configurations with hint 'pqc_sign_key_name'"
+ 	printf "\n\t-p ==> set pqc signature algorithm to 'pqc_sign_algo'"
  	printf "\n\t-B ==> set firmware encryption algorithm"
 +	printf "\n\t-R ==> set anti-rollback version to 'fw_ar_ver' (dec)"
  	printf "\n\t\t(can be specified more than once)\n"
  	exit 1
  }
-@@ -52,7 +53,7 @@ LOADABLES=
+@@ -54,7 +55,7 @@ LOADABLES=
  DTOVERLAY=
  DTADDR=
  
--while getopts ":A:a:c:C:D:d:e:f:i:k:l:n:o:O:v:r:s:H:S:b:B:" OPTION
-+while getopts ":A:a:c:C:D:d:e:f:i:k:l:n:o:O:v:r:s:H:S:b:B:R:" OPTION
+-while getopts ":A:a:c:C:D:d:e:f:i:k:l:n:o:O:v:r:s:H:S:b:P:p:B:" OPTION
++while getopts ":A:a:c:C:D:d:e:f:i:k:l:n:o:O:v:r:s:H:S:b:P:p:B:R:" OPTION
  do
  	case $OPTION in
  		A ) ARCH=$OPTARG;;
-@@ -76,6 +77,7 @@ do
- 		S ) SIGN_KEY_NAME=$OPTARG;;
- 		b ) SIGN_ALG=$OPTARG;;
+@@ -80,6 +81,7 @@ do
+ 		P ) PQC_SIGN_KEY_NAME=$OPTARG;;
+ 		p ) PQC_SIGN_ALG=$OPTARG;;
  		B ) FW_ENC_ALG=$OPTARG;;
 +		R ) AR_VER=$OPTARG;;
  		* ) echo "Invalid option passed to '$0' (options:$*)"
  		usage;;
  	esac
-@@ -239,6 +241,11 @@ if [ -n "${SIGN_KEY_NAME}" ]; then
+@@ -311,6 +313,11 @@ if [ -n "${PQC_SIGN_KEY_NAME}" ]; then
  	fi
  fi
  
@@ -37,19 +37,19 @@
  # add DT overlay blobs
  FDTOVERLAY_NODE=""
  OVCONFIGS=""
-@@ -272,6 +279,7 @@ OVCONFIGS=""
+@@ -344,6 +351,7 @@ OVCONFIGS=""
  			description = \"OpenWrt ${DEVICE} overlay $ovname\";
  			fdt = \"$ovnode\";
  			${COMPATIBLE_PROP}
 +			${FW_AR_VER}
  			${OVSIGNATURE}
+ 			${PQC_OVSIGNATURE}
  		};
- 	"
-@@ -317,6 +325,7 @@ ${ROOTFS_NODE}
+@@ -390,6 +398,7 @@ ${ROOTFS_NODE}
  			${LOADABLES:+loadables = ${LOADABLES};}
  			${COMPATIBLE_PROP}
  			${INITRD_PROP}
 +			${FW_AR_VER}
  			${SIGNATURE}
+ 			${PQC_SIGNATURE}
  		};
- 		${OVCONFIGS}

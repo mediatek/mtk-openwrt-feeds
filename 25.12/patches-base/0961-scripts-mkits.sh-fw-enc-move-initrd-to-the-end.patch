@@ -1,6 +1,6 @@
 --- a/scripts/mkits.sh
 +++ b/scripts/mkits.sh
-@@ -264,9 +264,9 @@ DATA="/dts-v1/;
+@@ -337,9 +337,9 @@ DATA="/dts-v1/;
  				algo = \"$HASH\";
  			};
  		};

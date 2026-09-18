@@ -1,9 +1,9 @@
 --- a/include/image-commands.mk
 +++ b/include/image-commands.mk
-@@ -455,7 +455,8 @@ define Build/fit-its
- 		$(if $(CONFIG_MTK_SECURE_BOOT), \
- 			-H $(word 1,$(subst $(comma), ,$(call qstrip,$(CONFIG_FIT_SIGN_ALG)))) \
- 			-b $(CONFIG_FIT_SIGN_ALG) -S $(call qstrip,$(CONFIG_FIT_SIGN_KEY_NAME))) \
+@@ -459,7 +459,8 @@ define Build/fit-its
+ 				-b $(call qstrip,$(CONFIG_FIT_SIGN_ALG)) -S $(call qstrip,$(CONFIG_FIT_SIGN_KEY_NAME))) \
+ 			$(if $(CONFIG_FIT_PQC_SIGN_KEY_NAME), \
+ 				-p $(call qstrip,$(CONFIG_FIT_PQC_SIGN_ALG)) -P $(call qstrip,$(CONFIG_FIT_PQC_SIGN_KEY_NAME)))) \
 -		$(if $(CONFIG_MTK_FW_ENC),-B $(CONFIG_FW_ENC_ALG))
 +		$(if $(CONFIG_MTK_FW_ENC),-B $(CONFIG_FW_ENC_ALG)) \
 +		$(if $(CONFIG_MTK_ANTI_ROLLBACK),-R $(call Image/get_fw_ar_ver))

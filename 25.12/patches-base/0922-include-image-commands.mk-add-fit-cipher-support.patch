@@ -1,11 +1,11 @@
 --- a/include/image-commands.mk
 +++ b/include/image-commands.mk
-@@ -454,7 +454,8 @@ define Build/fit-its
- 		-A $(LINUX_KARCH) -v $(LINUX_VERSION) \
- 		$(if $(CONFIG_MTK_SECURE_BOOT), \
- 			-H $(word 1,$(subst $(comma), ,$(call qstrip,$(CONFIG_FIT_SIGN_ALG)))) \
--			-b $(CONFIG_FIT_SIGN_ALG) -S $(call qstrip,$(CONFIG_FIT_SIGN_KEY_NAME)))
-+			-b $(CONFIG_FIT_SIGN_ALG) -S $(call qstrip,$(CONFIG_FIT_SIGN_KEY_NAME))) \
+@@ -458,7 +458,8 @@ define Build/fit-its
+ 			$(if $(CONFIG_FIT_SIGN_KEY_NAME), \
+ 				-b $(call qstrip,$(CONFIG_FIT_SIGN_ALG)) -S $(call qstrip,$(CONFIG_FIT_SIGN_KEY_NAME))) \
+ 			$(if $(CONFIG_FIT_PQC_SIGN_KEY_NAME), \
+-				-p $(call qstrip,$(CONFIG_FIT_PQC_SIGN_ALG)) -P $(call qstrip,$(CONFIG_FIT_PQC_SIGN_KEY_NAME))))
++				-p $(call qstrip,$(CONFIG_FIT_PQC_SIGN_ALG)) -P $(call qstrip,$(CONFIG_FIT_PQC_SIGN_KEY_NAME)))) \
 +		$(if $(CONFIG_MTK_FW_ENC),-B $(CONFIG_FW_ENC_ALG))
  endef
  

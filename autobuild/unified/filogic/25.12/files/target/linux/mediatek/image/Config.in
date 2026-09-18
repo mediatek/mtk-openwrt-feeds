@@ -13,6 +13,22 @@ config SBC_KEY_DIR
 	string "secure boot key directory"
 	default "../../keys"
 
+choice
+	prompt "Secure Boot Profile"
+	default SBC_PROFILE_CLASSICAL
+
+	config SBC_PROFILE_CLASSICAL
+		bool "Classical (RSA/ECC)"
+
+	config SBC_PROFILE_PQC
+		bool "PQC (ML-DSA)"
+
+	config SBC_PROFILE_HYBRID
+		bool "Hybrid (Classical + PQC)"
+endchoice
+
+if SBC_PROFILE_CLASSICAL || SBC_PROFILE_HYBRID
+
 config FIT_SIGN_KEY_NAME
 	string "FIT sign key name"
 	default "fit_key"
@@ -20,6 +36,20 @@ config FIT_SIGN_KEY_NAME
 config FIT_SIGN_ALG
 	string "FIT sign algorithm"
 	default "sha256,rsa2048"
+
+endif # SBC_PROFILE_CLASSICAL || SBC_PROFILE_HYBRID
+
+if SBC_PROFILE_PQC || SBC_PROFILE_HYBRID
+
+config FIT_PQC_SIGN_KEY_NAME
+	string "FIT PQC sign key name"
+	default "fit_pqc_key"
+
+config FIT_PQC_SIGN_ALG
+	string "FIT sign PQC algorithm"
+	default "sha512,mldsa87"
+
+endif # SBC_PROFILE_PQC || SBC_PROFILE_HYBRID
 
 menu "Firmware Encryption"
 

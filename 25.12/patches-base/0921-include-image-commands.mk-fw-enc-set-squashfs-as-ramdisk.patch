@@ -1,6 +1,6 @@
 --- a/include/image-commands.mk
 +++ b/include/image-commands.mk
-@@ -441,7 +441,7 @@ define Build/fit
+@@ -441,7 +441,7 @@ define Build/fit-its
  			$(if $(findstring 11,$(if $(DEVICE_DTS_OVERLAY),1)$(if $(findstring $(KERNEL_BUILD_DIR)/image-,$(word 2,$(1))),,1)), \
  				-d $(KERNEL_BUILD_DIR)/image-$$(basename $(word 2,$(1))), \
  				-d $(word 2,$(1)))) \

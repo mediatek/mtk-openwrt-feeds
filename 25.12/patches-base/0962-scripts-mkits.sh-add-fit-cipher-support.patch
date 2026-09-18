@@ -1,31 +1,31 @@
 --- a/scripts/mkits.sh
 +++ b/scripts/mkits.sh
-@@ -38,6 +38,7 @@ usage() {
- 	printf "\n\t-s ==> set FDT load address to 'addr' (hex)"
- 	printf "\n\t-S ==> add signature at configurations with hint 'sign_key_name'"
+@@ -40,6 +40,7 @@ usage() {
  	printf "\n\t-b ==> set signature algorithm to 'sign_algo'"
+ 	printf "\n\t-P ==> add pqc signature at configurations with hint 'pqc_sign_key_name'"
+ 	printf "\n\t-p ==> set pqc signature algorithm to 'pqc_sign_algo'"
 +	printf "\n\t-B ==> set firmware encryption algorithm"
  	printf "\n\t\t(can be specified more than once)\n"
  	exit 1
  }
-@@ -51,7 +52,7 @@ LOADABLES=
+@@ -53,7 +54,7 @@ LOADABLES=
  DTOVERLAY=
  DTADDR=
  
--while getopts ":A:a:c:C:D:d:e:f:i:k:l:n:o:O:v:r:s:H:S:b:" OPTION
-+while getopts ":A:a:c:C:D:d:e:f:i:k:l:n:o:O:v:r:s:H:S:b:B:" OPTION
+-while getopts ":A:a:c:C:D:d:e:f:i:k:l:n:o:O:v:r:s:H:S:b:P:p:" OPTION
++while getopts ":A:a:c:C:D:d:e:f:i:k:l:n:o:O:v:r:s:H:S:b:P:p:B:" OPTION
  do
  	case $OPTION in
  		A ) ARCH=$OPTARG;;
-@@ -74,6 +75,7 @@ do
- 		v ) VERSION=$OPTARG;;
- 		S ) SIGN_KEY_NAME=$OPTARG;;
+@@ -78,6 +79,7 @@ do
  		b ) SIGN_ALG=$OPTARG;;
+ 		P ) PQC_SIGN_KEY_NAME=$OPTARG;;
+ 		p ) PQC_SIGN_ALG=$OPTARG;;
 +		B ) FW_ENC_ALG=$OPTARG;;
  		* ) echo "Invalid option passed to '$0' (options:$*)"
  		usage;;
  	esac
-@@ -92,6 +94,38 @@ if [ -n "${COMPATIBLE}" ]; then
+@@ -101,6 +103,38 @@ if [ -n "${COMPATIBLE}" ]; then
  	COMPATIBLE_PROP="compatible = \"${COMPATIBLE}\";"
  fi
  
@@ -64,7 +64,7 @@
  [ "$FDTADDR" ] && {
  	DTADDR="$FDTADDR"
  }
-@@ -113,6 +147,7 @@ if [ -n "${DTB}" ]; then
+@@ -122,6 +156,7 @@ if [ -n "${DTB}" ]; then
  			hash${REFERENCE_CHAR}2 {
  				algo = \"${HASH}\";
  			};
@@ -72,7 +72,7 @@
  		};
  "
  	FDT_PROP="fdt = \"fdt${REFERENCE_CHAR}$FDTNUM\";"
-@@ -133,6 +168,7 @@ if [ -n "${INITRD}" ]; then
+@@ -142,6 +177,7 @@ if [ -n "${INITRD}" ]; then
  			hash${REFERENCE_CHAR}2 {
  				algo = \"${HASH}\";
  			};
@@ -80,7 +80,7 @@
  		};
  "
  	INITRD_PROP="ramdisk=\"initrd${REFERENCE_CHAR}${INITRDNUM}\";"
-@@ -227,6 +263,7 @@ OVCONFIGS=""
+@@ -299,6 +335,7 @@ OVCONFIGS=""
  			hash${REFERENCE_CHAR}2 {
  				algo = \"${HASH}\";
  			};
@@ -88,7 +88,7 @@
  		};
  "
  	OVCONFIGS="$OVCONFIGS
-@@ -263,6 +300,7 @@ DATA="/dts-v1/;
+@@ -336,6 +373,7 @@ DATA="/dts-v1/;
  			hash${REFERENCE_CHAR}2 {
  				algo = \"$HASH\";
  			};

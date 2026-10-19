@@ -48,20 +48,21 @@
  	.must_tx = true,
 +	.tick_dly = 2,
 +	.tick_dly_mask = SPI_CFG1_GET_TICK_DLY_MASK_V1,
- };
- 
- static const struct mtk_spi_compatible mtk_ipm_compat = {
- 	.enhance_timing = true,
- 	.dma_ext = true,
- 	.ipm_design = true,
-+	.tick_dly = 2,
-+	.tick_dly_mask = SPI_CMD_IPM_GET_TICKDLY_MASK,
 +};
 +
-+static const struct mtk_spi_compatible mt7987_compat = {
++static const struct mtk_spi_compatible mt7986_compat = {
 +	.enhance_timing = true,
 +	.dma_ext = true,
 +	.ipm_design = true,
++	.tick_dly = 2,
++	.tick_dly_mask = SPI_CMD_IPM_GET_TICKDLY_MASK,
+ };
+ 
+-static const struct mtk_spi_compatible mtk_ipm_compat = {
++static const struct mtk_spi_compatible mt7987_compat = {
+ 	.enhance_timing = true,
+ 	.dma_ext = true,
+ 	.ipm_design = true,
 +	.tick_dly = 2,
 +	.tick_dly_mask = SPI_CMD_IPM_V59_GET_TICKDLY_MASK,
  };
@@ -98,7 +99,7 @@
  };
  
  static const struct mtk_spi_compatible mt6893_compat = {
-@@ -216,6 +245,8 @@ static const struct mtk_spi_compatible m
+@@ -216,12 +245,11 @@ static const struct mtk_spi_compatible m
  	.enhance_timing = true,
  	.dma_ext = true,
  	.no_need_unprepare = true,
@@ -107,17 +108,32 @@
  };
  
  static const struct of_device_id mtk_spi_of_match[] = {
-@@ -240,6 +271,9 @@ static const struct of_device_id mtk_spi
+-	{ .compatible = "mediatek,spi-ipm",
+-		.data = (void *)&mtk_ipm_compat,
+-	},
+ 	{ .compatible = "mediatek,mt2701-spi",
+ 		.data = (void *)&mtk_common_compat,
+ 	},
+@@ -240,6 +268,18 @@ static const struct of_device_id mtk_spi
  	{ .compatible = "mediatek,mt7629-spi",
  		.data = (void *)&mt7622_compat,
  	},
++	{ .compatible = "mediatek,mt7981-spi",
++		.data = (void *)&mt7986_compat,
++	},
++	{ .compatible = "mediatek,mt7986-spi",
++		.data = (void *)&mt7986_compat,
++	},
 +	{ .compatible = "mediatek,mt7987-spi",
 +	  	.data = (void *)&mt7987_compat,
++	},
++	{ .compatible = "mediatek,mt7988-spi",
++		.data = (void *)&mt7986_compat,
 +	},
  	{ .compatible = "mediatek,mt8135-spi",
  		.data = (void *)&mtk_common_compat,
  	},
-@@ -343,8 +377,8 @@ static int mtk_spi_set_hw_cs_timing(stru
+@@ -343,8 +383,8 @@ static int mtk_spi_set_hw_cs_timing(stru
  static int mtk_spi_hw_init(struct spi_controller *host,
  			   struct spi_device *spi)
  {
@@ -127,7 +143,7 @@
  	struct mtk_spi *mdata = spi_controller_get_devdata(host);
  
  	cpha = spi->mode & SPI_CPHA ? 1 : 0;
-@@ -417,27 +451,14 @@ static int mtk_spi_hw_init(struct spi_co
+@@ -417,27 +457,14 @@ static int mtk_spi_hw_init(struct spi_co
  		       mdata->base + SPI_PAD_SEL_REG);
  
  	/* tick delay */
@@ -163,7 +179,7 @@
  
  	/* set hw cs timing */
  	mtk_spi_set_hw_cs_timing(spi);
-@@ -868,10 +889,12 @@ static int mtk_spi_append_caldata(struct
+@@ -868,10 +895,12 @@ static int mtk_spi_append_caldata(struct
  {
  	struct spi_cal_target *cal_target = kmalloc(sizeof(*cal_target), GFP_KERNEL);
  	struct mtk_spi *mdata = spi_controller_get_devdata(ctlr);
@@ -177,7 +193,7 @@
  	cal_target->step = 1;
  
  	list_add(&cal_target->list, ctlr->cal_target);
-@@ -1172,12 +1195,11 @@ static int mtk_spi_probe(struct platform
+@@ -1172,12 +1201,11 @@ static int mtk_spi_probe(struct platform
  	host->append_caldata = mtk_spi_append_caldata;
  
  	mdata = spi_controller_get_devdata(host);

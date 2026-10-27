@@ -57,7 +57,7 @@ if [ -z "${HOST_BIN}" -o -z "${HOSTPKG_BIN}" ]; then
 	exit 1
 fi
 
-OPENSSL=$HOSTPKG_BIN/openssl3
+OPENSSL=$HOST_BIN/openssl3
 PERL=$HOST_BIN/perl
 ROE_KEY=$(cat ${KEY_PATH} | bin2hex)
 SALT=$(cat ${SALT_PATH} | bin2hex)

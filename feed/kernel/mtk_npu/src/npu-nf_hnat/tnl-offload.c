@@ -395,8 +395,14 @@ static bool mtk_npu_tnl_decap_offloadable(struct sk_buff *skb)
 	u32 cnt;
 	u32 i;
 
-	if (secpath_exists(skb))
-		return false;
+	/* only allow packets decrypted by xfrm packet offload */
+	if (secpath_exists(skb)) {
+		struct sec_path *sp = skb_sec_path(skb);
+
+		for (i = 0; i < sp->len; i++)
+			if (sp->xvec[i]->xso.type != XFRM_DEV_OFFLOAD_PACKET)
+				return false;
+	}
 
 	if (unlikely(!mtk_npu_mcu_alive())) {
 		skb_mark_unbind(skb);

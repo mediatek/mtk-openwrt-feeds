@@ -189,7 +189,7 @@
 +	mdump_core_info->crc = 0;
 +	mdump_core_info->crc = crc32(0xffffffff, mdump_core_info, len) ^ 0xffffffff;
 +
-+	dcache_clean_inval_poc((unsigned long)mdump_core_info, len);
++	dcache_clean_inval_poc((unsigned long)mdump_core_info, (unsigned long)mdump_core_info + len);
 +}
 +
 +void arm64_atf_memory_dump(int reboot_timeout)
@@ -232,7 +232,7 @@
 +
 +	memcpy(saved_regs, regs, sizeof(*regs));
 +
-+	dcache_clean_inval_poc((unsigned long)saved_regs, sizeof(*regs));
++	dcache_clean_inval_poc((unsigned long)saved_regs, (unsigned long)saved_regs + sizeof(*regs));
 +
 +	arm64_atf_memory_dump_save_cpu_regs(regs, cpu);
 +}
@@ -246,7 +246,7 @@
 +
 +	memcpy(&saved_regs[cpu + 1], regs, sizeof(*regs));
 +
-+	dcache_clean_inval_poc((unsigned long)&saved_regs[cpu + 1], sizeof(*regs));
++	dcache_clean_inval_poc((unsigned long)&saved_regs[cpu + 1], (unsigned long)&saved_regs[cpu + 2]);
 +}
 +
 +/* dummy functions */

@@ -17,6 +17,11 @@
 #include <linux/arm-smccc.h>
 #include <linux/uaccess.h>
 
+#if KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE
+#include <linux/mtk_memdump.h>
+#define MDC_HAS_PANIC_CONTROLS
+#endif
+
 #define MDC "memdump"
 #define MDC_SIP "local_ip"
 #define MDC_DIP "dest_ip"
@@ -31,6 +36,23 @@ static struct proc_dir_entry *mdc_entry;
 static struct proc_dir_entry *mdc_sip_entry;
 static struct proc_dir_entry *mdc_dip_entry;
 static struct proc_dir_entry *mdc_netmask_entry;
+
+#ifdef MDC_HAS_PANIC_CONTROLS
+struct mdc_panic_control {
+	const char *name;
+	enum mtk_memdump_panic_type type;
+};
+
+static const struct mdc_panic_control mdc_panic_controls[] = {
+	{ "sysrq", MTK_MEMDUMP_PANIC_SYSRQ },
+	{ "warn", MTK_MEMDUMP_PANIC_WARN },
+	{ "oom", MTK_MEMDUMP_PANIC_OOM },
+	{ "hung_task", MTK_MEMDUMP_PANIC_HUNG_TASK },
+	{ "soft_lockup", MTK_MEMDUMP_PANIC_SOFT_LOCKUP },
+	{ "hard_lockup", MTK_MEMDUMP_PANIC_HARD_LOCKUP },
+	{ "rcu_stall", MTK_MEMDUMP_PANIC_RCU_STALL },
+};
+#endif
 
 static __be32 string_to_ip(const char *s)
 {
@@ -270,8 +292,93 @@ static const struct file_operations mdc_netmask_fops = {
 };
 #endif
 
+#ifdef MDC_HAS_PANIC_CONTROLS
+static int mdc_panic_display(struct seq_file *seq, void *v)
+{
+	enum mtk_memdump_panic_type type = (uintptr_t)seq->private;
+
+	seq_printf(seq, "%d\n", mtk_memdump_get_panic_enabled(type));
+	return 0;
+}
+
+static int mdc_panic_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, mdc_panic_display, pde_data(inode));
+}
+
+static ssize_t mdc_panic_write(struct file *file, const char __user *buffer,
+			       size_t count, loff_t *pos)
+{
+	struct seq_file *seq = file->private_data;
+	enum mtk_memdump_panic_type type = (uintptr_t)seq->private;
+	char input[2];
+	bool enabled;
+	int ret;
+
+	if (*pos)
+		return -ENOTSUPP;
+
+	if (!count || count > sizeof(input))
+		return -EINVAL;
+
+	if (copy_from_user(input, buffer, count))
+		return -EFAULT;
+
+	if (input[0] != '0' && input[0] != '1')
+		return -EINVAL;
+
+	if (count == sizeof(input) && input[1] != '\n')
+		return -EINVAL;
+
+	enabled = input[0] == '1';
+	ret = mtk_memdump_set_panic_enabled(type, enabled);
+	if (ret)
+		return ret;
+
+	return count;
+}
+
+#if KERNEL_VERSION(5, 6, 0) <= LINUX_VERSION_CODE
+static const struct proc_ops mdc_panic_fops = {
+	.proc_open = mdc_panic_open,
+	.proc_read = seq_read,
+	.proc_write = mdc_panic_write,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
+};
+#else
+static const struct file_operations mdc_panic_fops = {
+	.open = mdc_panic_open,
+	.read = seq_read,
+	.write = mdc_panic_write,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+#endif
+
+static int mdc_create_panic_controls(void)
+{
+	const struct mdc_panic_control *control;
+	size_t i;
+
+	for (i = 0; i < ARRAY_SIZE(mdc_panic_controls); i++) {
+		control = &mdc_panic_controls[i];
+		if (!proc_create_data(control->name, 0644, mdc_entry,
+				      &mdc_panic_fops,
+				      (void *)(uintptr_t)control->type))
+			return -ENOMEM;
+	}
+
+	return 0;
+}
+#endif
+
 static int __init mdc_init(void)
 {
+#ifdef MDC_HAS_PANIC_CONTROLS
+	int ret;
+#endif
+
 	mdc_entry = proc_mkdir(MDC, NULL);
 	if (!mdc_entry) {
 		pr_err("failed to create proc entry " MDC);
@@ -299,6 +406,15 @@ static int __init mdc_init(void)
 		proc_remove(mdc_entry);
 		return -1;
 	}
+
+#ifdef MDC_HAS_PANIC_CONTROLS
+	ret = mdc_create_panic_controls();
+	if (ret) {
+		pr_err("failed to create memdump panic control entries");
+		proc_remove(mdc_entry);
+		return ret;
+	}
+#endif
 
 	return 0;
 }

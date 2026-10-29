@@ -1,0 +1,378 @@
+--- a/include/linux/mtk_memdump.h
++++ b/include/linux/mtk_memdump.h
+@@ -0,0 +1,64 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++#ifndef _LINUX_MTK_MEMDUMP_H
++#define _LINUX_MTK_MEMDUMP_H
++
++#include <linux/errno.h>
++#include <linux/types.h>
++
++struct pt_regs;
++
++enum mtk_memdump_panic_type {
++	MTK_MEMDUMP_PANIC_SYSRQ,
++	MTK_MEMDUMP_PANIC_WARN,
++	MTK_MEMDUMP_PANIC_OOM,
++	MTK_MEMDUMP_PANIC_HUNG_TASK,
++	MTK_MEMDUMP_PANIC_SOFT_LOCKUP,
++	MTK_MEMDUMP_PANIC_HARD_LOCKUP,
++	MTK_MEMDUMP_PANIC_RCU_STALL,
++	MTK_MEMDUMP_PANIC_MAX,
++};
++
++#ifdef CONFIG_MTK_ATF_MEMDUMP
++int mtk_memdump_set_panic_enabled(enum mtk_memdump_panic_type type,
++				  bool enabled);
++bool mtk_memdump_get_panic_enabled(enum mtk_memdump_panic_type type);
++void mtk_memdump_panic_notify(enum mtk_memdump_panic_type type,
++			      struct pt_regs *regs);
++void mtk_memdump_panic_force(struct pt_regs *regs);
++bool mtk_memdump_panic_triggered(void);
++struct pt_regs *mtk_memdump_get_panic_regs(void);
++#else
++static inline int
++mtk_memdump_set_panic_enabled(enum mtk_memdump_panic_type type, bool enabled)
++{
++	return -EOPNOTSUPP;
++}
++
++static inline bool
++mtk_memdump_get_panic_enabled(enum mtk_memdump_panic_type type)
++{
++	return false;
++}
++
++static inline void
++mtk_memdump_panic_notify(enum mtk_memdump_panic_type type,
++			 struct pt_regs *regs)
++{
++}
++
++static inline void mtk_memdump_panic_force(struct pt_regs *regs)
++{
++}
++
++static inline bool mtk_memdump_panic_triggered(void)
++{
++	return false;
++}
++
++static inline struct pt_regs *mtk_memdump_get_panic_regs(void)
++{
++	return NULL;
++}
++#endif
++
++#endif /* _LINUX_MTK_MEMDUMP_H */
+--- a/arch/arm64/kernel/memdump.c
++++ b/arch/arm64/kernel/memdump.c
+@@ -18,7 +18,10 @@
+ #include <linux/reboot.h>
+ #include <linux/crc32.h>
+ #include <linux/kexec.h>
++#include <linux/bitops.h>
++#include <linux/export.h>
++#include <linux/mtk_memdump.h>
+ #include <linux/percpu.h>
+ #include <asm/kexec.h>
+ #include <asm/cacheflush.h>
+ 
+@@ -76,7 +79,62 @@ static struct memdump_core_info *mdump_c
+ static struct pt_regs *mdump_panic_regs;
+ static size_t core_info_size;
+ static bool warn_max_range;
+ static DEFINE_PER_CPU(bool, mdump_panic_info_saved);
++static unsigned long mdump_panic_mask = BIT(MTK_MEMDUMP_PANIC_SYSRQ);
++static DEFINE_PER_CPU(bool, mdump_panic_requested);
++static DEFINE_PER_CPU(struct pt_regs *, mdump_panic_source_regs);
++
++int mtk_memdump_set_panic_enabled(enum mtk_memdump_panic_type type,
++				  bool enabled)
++{
++	if ((unsigned int)type >= MTK_MEMDUMP_PANIC_MAX)
++		return -EINVAL;
++
++	if (enabled)
++		set_bit(type, &mdump_panic_mask);
++	else
++		clear_bit(type, &mdump_panic_mask);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(mtk_memdump_set_panic_enabled);
++
++bool mtk_memdump_get_panic_enabled(enum mtk_memdump_panic_type type)
++{
++	if ((unsigned int)type >= MTK_MEMDUMP_PANIC_MAX)
++		return false;
++
++	return test_bit(type, &mdump_panic_mask);
++}
++EXPORT_SYMBOL_GPL(mtk_memdump_get_panic_enabled);
++
++void mtk_memdump_panic_notify(enum mtk_memdump_panic_type type,
++			      struct pt_regs *regs)
++{
++	if (!mtk_memdump_get_panic_enabled(type))
++		return;
++
++	preempt_disable_notrace();
++	this_cpu_write(mdump_panic_source_regs, regs);
++	this_cpu_write(mdump_panic_requested, true);
++}
++
++void mtk_memdump_panic_force(struct pt_regs *regs)
++{
++	preempt_disable_notrace();
++	this_cpu_write(mdump_panic_source_regs, regs);
++	this_cpu_write(mdump_panic_requested, true);
++}
++
++bool mtk_memdump_panic_triggered(void)
++{
++	return this_cpu_read(mdump_panic_requested);
++}
++
++struct pt_regs *mtk_memdump_get_panic_regs(void)
++{
++	return this_cpu_read(mdump_panic_source_regs);
++}
+ 
+ static int log_ram_headers_callback(struct resource *res, void *arg)
+ {
+--- a/arch/arm64/kernel/traps.c
++++ b/arch/arm64/kernel/traps.c
+@@ -27,6 +27,7 @@
+ #include <linux/kasan.h>
+ #include <linux/ubsan.h>
+ #include <linux/cfi.h>
++#include <linux/mtk_memdump.h>
+ 
+ #include <asm/atomic.h>
+ #include <asm/bug.h>
+@@ -228,10 +229,14 @@ void die(const char *str, struct pt_regs
+ 	add_taint(TAINT_DIE, LOCKDEP_NOW_UNRELIABLE);
+ 	oops_exit();
+ 
+-	if (in_interrupt())
++	if (in_interrupt()) {
++		mtk_memdump_panic_force(regs);
+ 		panic("%s: Fatal exception in interrupt", str);
+-	if (panic_on_oops)
++	}
++	if (panic_on_oops) {
++		mtk_memdump_panic_force(regs);
+ 		panic("%s: Fatal exception", str);
++	}
+ 
+ 	raw_spin_unlock_irqrestore(&die_lock, flags);
+ 
+--- a/drivers/tty/sysrq.c
++++ b/drivers/tty/sysrq.c
+@@ -51,6 +51,9 @@
+ #include <linux/syscalls.h>
+ #include <linux/of.h>
+ #include <linux/rcupdate.h>
++#ifdef CONFIG_MTK_ATF_MEMDUMP
++#include <linux/mtk_memdump.h>
++#endif
+ 
+ #include <asm/ptrace.h>
+ #include <asm/irq_regs.h>
+@@ -151,6 +154,9 @@ static void sysrq_handle_crash(u8 key)
+ 	/* release the RCU read lock before crashing */
+ 	rcu_read_unlock();
+ 
++#ifdef CONFIG_MTK_ATF_MEMDUMP
++	mtk_memdump_panic_notify(MTK_MEMDUMP_PANIC_SYSRQ, NULL);
++#endif
+ 	panic("sysrq triggered crash\n");
+ }
+ static const struct sysrq_key_op sysrq_crash_op = {
+--- a/mm/oom_kill.c
++++ b/mm/oom_kill.c
+@@ -46,6 +46,9 @@
+ #include <linux/mmu_notifier.h>
+ #include <linux/cred.h>
+ #include <linux/nmi.h>
++#ifdef CONFIG_MTK_ATF_MEMDUMP
++#include <linux/mtk_memdump.h>
++#endif
+ 
+ #include <asm/tlb.h>
+ #include "internal.h"
+@@ -1083,6 +1086,9 @@ static void check_panic_on_oom(struct oo
+ 	if (is_sysrq_oom(oc))
+ 		return;
+ 	dump_header(oc);
++#ifdef CONFIG_MTK_ATF_MEMDUMP
++	mtk_memdump_panic_notify(MTK_MEMDUMP_PANIC_OOM, NULL);
++#endif
+ 	panic("Out of memory: %s panic_on_oom is enabled\n",
+ 		sysctl_panic_on_oom == 2 ? "compulsory" : "system-wide");
+ }
+--- a/kernel/hung_task.c
++++ b/kernel/hung_task.c
+@@ -22,6 +22,9 @@
+ #include <linux/sched/signal.h>
+ #include <linux/sched/debug.h>
+ #include <linux/sched/sysctl.h>
++#ifdef CONFIG_MTK_ATF_MEMDUMP
++#include <linux/mtk_memdump.h>
++#endif
+ 
+ #include <trace/events/sched.h>
+ 
+@@ -223,8 +226,12 @@ static void check_hung_uninterruptible_t
+ 		trigger_all_cpu_backtrace();
+ 	}
+ 
+-	if (hung_task_call_panic)
++	if (hung_task_call_panic) {
++#ifdef CONFIG_MTK_ATF_MEMDUMP
++		mtk_memdump_panic_notify(MTK_MEMDUMP_PANIC_HUNG_TASK, NULL);
++#endif
+ 		panic("hung_task: blocked tasks");
++	}
+ }
+ 
+ static long hung_timeout_jiffies(unsigned long last_checked,
+--- a/kernel/watchdog.c
++++ b/kernel/watchdog.c
+@@ -25,6 +25,9 @@
+ #include <linux/stop_machine.h>
+ #include <linux/sysctl.h>
+ #include <linux/tick.h>
++#ifdef CONFIG_MTK_ATF_MEMDUMP
++#include <linux/mtk_memdump.h>
++#endif
+ 
+ #include <linux/sched/clock.h>
+ #include <linux/sched/debug.h>
+@@ -213,8 +216,13 @@ void watchdog_hardlockup_check(unsigned
+ 				clear_bit_unlock(0, &hard_lockup_nmi_warn);
+ 		}
+ 
+-		if (hardlockup_panic)
++		if (hardlockup_panic) {
++#ifdef CONFIG_MTK_ATF_MEMDUMP
++			mtk_memdump_panic_notify(MTK_MEMDUMP_PANIC_HARD_LOCKUP,
++						 regs);
++#endif
+ 			nmi_panic(regs, "Hard LOCKUP");
++		}
+ 
+ 		per_cpu(watchdog_hardlockup_warned, cpu) = true;
+ 	} else {
+@@ -767,8 +775,13 @@ static enum hrtimer_restart watchdog_tim
+ 		}
+ 
+ 		add_taint(TAINT_SOFTLOCKUP, LOCKDEP_STILL_OK);
+-		if (softlockup_panic)
++		if (softlockup_panic) {
++#ifdef CONFIG_MTK_ATF_MEMDUMP
++			mtk_memdump_panic_notify(MTK_MEMDUMP_PANIC_SOFT_LOCKUP,
++						 regs);
++#endif
+ 			panic("softlockup: hung tasks");
++		}
+ 	}
+ 
+ 	return HRTIMER_RESTART;
+--- a/kernel/rcu/tree_stall.h
++++ b/kernel/rcu/tree_stall.h
+@@ -11,6 +11,9 @@
+ #include <linux/kvm_para.h>
+ #include <linux/rcu_notifier.h>
+ #include <linux/smp.h>
++#ifdef CONFIG_MTK_ATF_MEMDUMP
++#include <linux/mtk_memdump.h>
++#endif
+ 
+ //////////////////////////////////////////////////////////////////////////////
+ //
+@@ -145,8 +148,12 @@ static void panic_on_rcu_stall(void)
+ 	if (++cpu_stall < sysctl_max_rcu_stall_to_panic)
+ 		return;
+ 
+-	if (sysctl_panic_on_rcu_stall)
++	if (sysctl_panic_on_rcu_stall) {
++#ifdef CONFIG_MTK_ATF_MEMDUMP
++		mtk_memdump_panic_notify(MTK_MEMDUMP_PANIC_RCU_STALL, NULL);
++#endif
+ 		panic("RCU Stall\n");
++	}
+ }
+ 
+ /**
+--- a/kernel/panic.c
++++ b/kernel/panic.c
+@@ -36,6 +36,9 @@
+ #include <linux/sysfs.h>
+ #include <linux/context_tracking.h>
+ #include <linux/seq_buf.h>
++#ifdef CONFIG_MTK_ATF_MEMDUMP
++#include <linux/mtk_memdump.h>
++#endif
+ #include <trace/events/error_report.h>
+ #include <asm/sections.h>
+ 
+@@ -242,14 +245,28 @@ void check_panic_on_warn(const char *ori
+-void check_panic_on_warn(const char *origin)
++static void check_panic_on_warn_regs(const char *origin,
++				     struct pt_regs *regs)
+ {
+ 	unsigned int limit;
+ 
+-	if (panic_on_warn)
++	if (panic_on_warn) {
++#ifdef CONFIG_MTK_ATF_MEMDUMP
++		mtk_memdump_panic_notify(MTK_MEMDUMP_PANIC_WARN, regs);
++#endif
+ 		panic("%s: panic_on_warn set ...\n", origin);
++	}
+ 
+ 	limit = READ_ONCE(warn_limit);
+-	if (atomic_inc_return(&warn_count) >= limit && limit)
++	if (atomic_inc_return(&warn_count) >= limit && limit) {
++#ifdef CONFIG_MTK_ATF_MEMDUMP
++		mtk_memdump_panic_notify(MTK_MEMDUMP_PANIC_WARN, regs);
++#endif
+ 		panic("%s: system warned too often (kernel.warn_limit is %d)",
+ 		      origin, limit);
++	}
+ }
+ 
++void check_panic_on_warn(const char *origin)
++{
++	check_panic_on_warn_regs(origin, NULL);
++}
++
+ /*
+@@ -344,10 +361,11 @@ void panic(const char *fmt, ...)
+ 	} else if (old_cpu != this_cpu)
+ 		panic_smp_self_stop();
+ 
+ #ifdef CONFIG_MTK_ATF_MEMDUMP
+-	arm64_atf_memory_dump_save_info(NULL);
++	if (mtk_memdump_panic_triggered())
++		arm64_atf_memory_dump_save_info(mtk_memdump_get_panic_regs());
+ #endif
+ 
+ 	console_verbose();
+ 	bust_spinlocks(1);
+ 	va_start(args, fmt);
+@@ -426,7 +444,8 @@ void panic(const char *fmt, ...)
+ 	panic_print_sys_info(true);
+ 
+ #ifdef CONFIG_MTK_ATF_MEMDUMP
+-	arm64_atf_memory_dump(panic_timeout);
++	if (mtk_memdump_panic_triggered())
++		arm64_atf_memory_dump(panic_timeout);
+ #endif
+ 
+ 	if (!panic_blink)
+@@ -759 +778 @@ void __warn(const char *file, int line,
+-	check_panic_on_warn("kernel");
++	check_panic_on_warn_regs("kernel", regs);

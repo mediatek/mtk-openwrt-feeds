@@ -15,7 +15,7 @@ Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
 
 --- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
 +++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
-@@ -4573,6 +4573,12 @@ static void mtk_pending_work(struct work
+@@ -4600,6 +4600,12 @@ static void mtk_pending_work(struct work
  	rtnl_unlock();
  }
  
@@ -28,51 +28,57 @@ Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
  static int mtk_free_dev(struct mtk_eth *eth)
  {
  	int i;
-@@ -5703,6 +5709,17 @@ static int mtk_probe(struct platform_dev
+@@ -5735,20 +5741,6 @@ static int mtk_probe(struct platform_dev
  		}
  	}
  
-+	mtk_eth_debugfs_init(eth);
-+
-+	/* we run 2 devices on the same DMA ring so we need a dummy device
-+	 * for NAPI to work
-+	 */
-+	init_dummy_netdev(&eth->dummy_dev);
-+	eth->dummy_dev.threaded = 1;
-+	strcpy(eth->dummy_dev.name, "mtk_eth");
-+	netif_napi_add(&eth->dummy_dev, &eth->tx_napi, mtk_napi_tx);
-+	netif_napi_add(&eth->dummy_dev, &eth->rx_napi, mtk_napi_rx);
-+
- 	for (i = 0; i < MTK_MAX_DEVS; i++) {
- 		if (!eth->netdev[i])
- 			continue;
-@@ -5717,17 +5734,6 @@ static int mtk_probe(struct platform_dev
- 				   eth->netdev[i]->base_addr, eth->irq[0]);
- 	}
+-	for (i = 0; i < MTK_MAX_DEVS; i++) {
+-		if (!eth->netdev[i])
+-			continue;
+-
+-		err = register_netdev(eth->netdev[i]);
+-		if (err) {
+-			dev_err(eth->dev, "error bringing up device\n");
+-			goto err_unreg_netdev;
+-		} else
+-			netif_info(eth, probe, eth->netdev[i],
+-				   "mediatek frame engine at 0x%08lx, irq %d\n",
+-				   eth->netdev[i]->base_addr, eth->irq[0]);
+-	}
+-
+ 	mtk_eth_debugfs_init(eth);
  
--	mtk_eth_debugfs_init(eth);
--
--	/* we run 2 devices on the same DMA ring so we need a dummy device
--	 * for NAPI to work
--	 */
--	init_dummy_netdev(&eth->dummy_dev);
--	eth->dummy_dev.threaded = 1;
--	strcpy(eth->dummy_dev.name, "mtk_eth");
--	netif_napi_add(&eth->dummy_dev, &eth->tx_napi, mtk_napi_tx);
--	netif_napi_add(&eth->dummy_dev, &eth->rx_napi, mtk_napi_rx);
--
+ 	/* we run 2 devices on the same DMA ring so we need a dummy device
+@@ -5765,6 +5757,20 @@ static int mtk_probe(struct platform_dev
+ 	netif_napi_add(eth->dummy_dev, &eth->tx_napi, mtk_napi_tx);
+ 	netif_napi_add(eth->dummy_dev, &eth->rx_napi, mtk_napi_rx);
+ 
++	for (i = 0; i < MTK_MAX_DEVS; i++) {
++		if (!eth->netdev[i])
++			continue;
++
++		err = register_netdev(eth->netdev[i]);
++		if (err) {
++			dev_err(eth->dev, "error bringing up device\n");
++			goto err_unreg_netdev;
++		} else
++			netif_info(eth, probe, eth->netdev[i],
++				   "mediatek frame engine at 0x%08lx, irq %d\n",
++				   eth->netdev[i]->base_addr, eth->irq[0]);
++	}
++
  	platform_set_drvdata(pdev, eth);
  	schedule_delayed_work(&eth->reset.monitor_work,
  			      MTK_DMA_MONITOR_TIMEOUT);
-@@ -5735,6 +5741,7 @@ static int mtk_probe(struct platform_dev
- 	return 0;
- 
+@@ -5774,6 +5780,7 @@ static int mtk_probe(struct platform_dev
+ err_unreg_netdev:
+ 	mtk_unreg_dev(eth);
  err_deinit_ppe:
 +	mtk_napi_del(eth);
  	mtk_ppe_deinit(eth);
  	mtk_release_all_muxes(eth);
  	mtk_mdio_cleanup(eth);
-@@ -5773,8 +5780,7 @@ static int mtk_remove(struct platform_de
+@@ -5812,8 +5819,7 @@ static int mtk_remove(struct platform_de
  	mtk_wed_exit();
  	mtk_hw_deinit(eth);
  
@@ -80,5 +86,5 @@ Signed-off-by: Bo-Cun Chen <bc-bocun.chen@mediatek.com>
 -	netif_napi_del(&eth->rx_napi);
 +	mtk_napi_del(eth);
  	mtk_cleanup(eth);
+ 	free_netdev(eth->dummy_dev);
  	mtk_mdio_cleanup(eth);
- 	mtk_release_all_muxes(eth);

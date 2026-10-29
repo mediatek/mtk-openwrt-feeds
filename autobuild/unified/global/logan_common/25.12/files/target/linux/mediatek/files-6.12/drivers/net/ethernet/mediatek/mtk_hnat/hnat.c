@@ -13,6 +13,7 @@
 
 #include <linux/dma-mapping.h>
 #include <linux/delay.h>
+#include <linux/etherdevice.h>
 #include <linux/if.h>
 #include <linux/io.h>
 #include <linux/module.h>
@@ -21,16 +22,14 @@
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
 #include <linux/reset.h>
-#include <linux/rtnetlink.h>
-#include <net/netlink.h>
+#include <net/switchdev.h>
 
 #include "nf_hnat_mtk.h"
 #include "hnat.h"
 #include "hnat_api.h"
 
 struct mtk_hnat *hnat_priv;
-static struct socket *_hnat_roam_sock;
-static struct work_struct _hnat_roam_work;
+static struct workqueue_struct *_hnat_roam_wq;
 static struct delayed_work _hnat_flow_entry_teardown_work;
 
 int (*ra_sw_nat_hook_rx)(struct sk_buff *skb) = NULL;
@@ -676,87 +675,85 @@ static int entry_delete_by_bssid_wcid(u32 wdma_idx, u16 bssid, u16 wcid)
 	return ret;
 }
 
-static void hnat_roam_handler(struct work_struct *work)
+static void hnat_roam_work_handler(struct work_struct *work)
 {
-	struct kvec iov;
-	struct msghdr msg;
-	struct nlmsghdr *nlh;
-	struct ndmsg *ndm;
-	struct nlattr *nla;
-	u8 rcv_buf[512];
-	int len;
+	struct hnat_roam_work *roam = container_of(work, struct hnat_roam_work, work);
 
-	if (!_hnat_roam_sock)
-		return;
-
-	iov.iov_base = rcv_buf;
-	iov.iov_len = sizeof(rcv_buf);
-	memset(&msg, 0, sizeof(msg));
-	msg.msg_namelen = sizeof(struct sockaddr_nl);
-
-	len = kernel_recvmsg(_hnat_roam_sock, &msg, &iov, 1, iov.iov_len, 0);
-	if (len <= 0)
-		goto out;
-
-	nlh = (struct nlmsghdr *)rcv_buf;
-	if (!NLMSG_OK(nlh, len) || nlh->nlmsg_type != RTM_NEWNEIGH)
-		goto out;
-
-	len = nlh->nlmsg_len - NLMSG_HDRLEN;
-	ndm = (struct ndmsg *)NLMSG_DATA(nlh);
-	if (ndm->ndm_family != PF_BRIDGE)
-		goto out;
-
-	nla = (struct nlattr *)((u8 *)ndm + sizeof(struct ndmsg));
-	len -= NLMSG_LENGTH(sizeof(struct ndmsg));
-	while (nla_ok(nla, len)) {
-		if (nla_type(nla) == NDA_LLADDR)
-			entry_delete_by_mac(nla_data(nla));
-		nla = nla_next(nla, &len);
-	}
-
-out:
-	schedule_work(&_hnat_roam_work);
+	entry_delete_by_mac(roam->mac);
+	kfree(roam);
 }
+
+/* br_fdb_update() emits SWITCHDEV_FDB_DEL_TO_DEVICE with the stale port before
+ * it repoints fdb->dst, so this fires on every bridge FDB roam. Called in
+ * atomic context: the work item does the table walk.
+ */
+static int hnat_roam_switchdev_event(struct notifier_block *nb,
+				     unsigned long event, void *ptr)
+{
+	struct switchdev_notifier_fdb_info *fdb_info = ptr;
+	struct hnat_roam_work *roam;
+	struct net_device *dev;
+
+	if (event != SWITCHDEV_FDB_DEL_TO_DEVICE)
+		return NOTIFY_DONE;
+
+	dev = switchdev_notifier_info_to_dev(ptr);
+	if (!dev || !net_eq(dev_net(dev), &init_net) ||
+	    netif_is_bridge_master(dev))
+		return NOTIFY_DONE;
+
+	if (fdb_info->is_local || !is_valid_ether_addr(fdb_info->addr))
+		return NOTIFY_DONE;
+
+	if (debug_level >= 2)
+		pr_info("[%s]: fdb del mac=%pM port=%s\n",
+			__func__, fdb_info->addr, dev->name);
+
+	roam = kmalloc(sizeof(*roam), GFP_ATOMIC);
+	if (!roam)
+		return NOTIFY_DONE;
+
+	ether_addr_copy(roam->mac, fdb_info->addr);
+	INIT_WORK(&roam->work, hnat_roam_work_handler);
+	queue_work(_hnat_roam_wq, &roam->work);
+
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block hnat_roam_switchdev_nb = {
+	.notifier_call = hnat_roam_switchdev_event,
+};
 
 static int hnat_roaming_enable(void)
 {
-	struct socket *sock = NULL;
-	struct sockaddr_nl addr;
 	int ret;
 
-	INIT_WORK(&_hnat_roam_work, hnat_roam_handler);
+	/* serialize the roaming work */
+	_hnat_roam_wq = alloc_ordered_workqueue("hnat_roam", 0);
+	if (!_hnat_roam_wq)
+		return -ENOMEM;
 
-	ret = sock_create_kern(&init_net, AF_NETLINK, SOCK_RAW, NETLINK_ROUTE, &sock);
-	if (ret < 0)
-		goto out;
+	ret = register_switchdev_notifier(&hnat_roam_switchdev_nb);
+	if (ret) {
+		destroy_workqueue(_hnat_roam_wq);
+		_hnat_roam_wq = NULL;
+		return ret;
+	}
 
-	_hnat_roam_sock = sock;
-
-	addr.nl_family = AF_NETLINK;
-	addr.nl_pad = 0;
-	addr.nl_pid = 65534;
-	addr.nl_groups = 1 << (RTNLGRP_NEIGH - 1);
-	ret = kernel_bind(sock, (struct sockaddr *)&addr, sizeof(addr));
-	if (ret < 0)
-		goto out;
-
-	schedule_work(&_hnat_roam_work);
 	pr_info("hnat roaming work enable\n");
 
 	return 0;
-out:
-	if (sock)
-		sock_release(sock);
-
-	return ret;
 }
 
 static void hnat_roaming_disable(void)
 {
-	if (_hnat_roam_sock)
-		sock_release(_hnat_roam_sock);
-	_hnat_roam_sock = NULL;
+	if (!_hnat_roam_wq)
+		return;
+
+	unregister_switchdev_notifier(&hnat_roam_switchdev_nb);
+	/* flushes any work still queued */
+	destroy_workqueue(_hnat_roam_wq);
+	_hnat_roam_wq = NULL;
 	pr_info("hnat roaming work disable\n");
 }
 

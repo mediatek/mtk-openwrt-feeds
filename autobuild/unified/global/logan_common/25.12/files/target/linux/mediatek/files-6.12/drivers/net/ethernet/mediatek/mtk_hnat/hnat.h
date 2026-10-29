@@ -1033,6 +1033,11 @@ struct hnat_neigh_update_event {
 	u8 tbl_family;
 };
 
+struct hnat_roam_work {
+	struct work_struct work;
+	u8 mac[ETH_ALEN];
+};
+
 struct hnat_prot_3t_cfg {
 	u16 ipv4_chk; /* IPv4 protocol check flag */
 	u16 ipv6_chk; /* IPv6 protocol check flag */

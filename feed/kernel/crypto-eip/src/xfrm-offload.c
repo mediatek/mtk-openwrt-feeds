@@ -107,7 +107,7 @@ void mtk_crypto_decrypt_sec_path_setup(struct sk_buff *skb, u16 cdrt)
 	 * (len == 0) makes xfrm_input_state() read xvec[-1]
 	 */
 	sp = secpath_set(skb);
-	if (!sp || sp->len == XFRM_MAX_DEPTH) {
+	if (!sp || sp->len >= XFRM_MAX_OFFLOAD_DEPTH) {
 		xfrm_state_put(x);
 		return;
 	}
@@ -115,6 +115,10 @@ void mtk_crypto_decrypt_sec_path_setup(struct sk_buff *skb, u16 cdrt)
 	sp->xvec[sp->len++] = x;
 	sp->olen++;
 	xo = xfrm_offload(skb);
+	if (!xo) {
+		secpath_reset(skb);
+		return;
+	}
 	xo->flags = CRYPTO_DONE;
 	xo->status = CRYPTO_SUCCESS;
 }
@@ -402,10 +406,10 @@ void mtk_xfrm_offload_state_free(struct xfrm_state *xs)
 #endif
 		mtk_xfrm_offload_cls_entry_tear_down(xfrm_params);
 
+	mtk_xfrm_offload_context_tear_down(xfrm_params);
+
 	if (xfrm_params->cdrt)
 		mtk_pce_cdrt_entry_free(xfrm_params->cdrt);
-
-	mtk_xfrm_offload_context_tear_down(xfrm_params);
 
 	devm_kfree(crypto_dev, xfrm_params);
 }
@@ -438,8 +442,11 @@ int mtk_xfrm_offload_policy_add(struct xfrm_policy *xp)
 			return 0;
 
 		xfrm_params = (struct mtk_xfrm_params *)xs->xso.offload_handle;
-		if (!xfrm_params)
+		if (!xfrm_params) {
+			xfrm_state_put(xs);
 			return 0;
+		}
+
 		xp->xdo.offload_handle = (unsigned long) xfrm_params;
 		xfrm_state_put(xs);
 	}

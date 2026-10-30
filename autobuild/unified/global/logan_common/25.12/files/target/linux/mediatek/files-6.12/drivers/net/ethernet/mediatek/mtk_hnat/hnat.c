@@ -26,6 +26,7 @@
 
 #include "nf_hnat_mtk.h"
 #include "hnat.h"
+#include "hnat_api.h"
 
 struct mtk_hnat *hnat_priv;
 static struct socket *_hnat_roam_sock;
@@ -1976,6 +1977,8 @@ static int hnat_probe(struct platform_device *pdev)
 	INIT_LIST_HEAD(&hnat_priv->xlat.map_list);
 	INIT_LIST_HEAD(&hnat_priv->mcast_blist_list);
 
+	hnat_api_init();
+
 	return 0;
 
 err_out:
@@ -1998,6 +2001,7 @@ static void hnat_remove(struct platform_device *pdev)
 {
 	int i;
 
+	hnat_api_deinit();
 	hnat_roaming_disable();
 	hnat_flow_entry_teardown_disable();
 	unregister_netdevice_notifier(&nf_hnat_netdevice_nb);

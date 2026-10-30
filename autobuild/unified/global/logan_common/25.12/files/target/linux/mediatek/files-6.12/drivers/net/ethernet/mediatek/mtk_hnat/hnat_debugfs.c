@@ -48,6 +48,11 @@ bool pppoe_br_rule_mode;
 struct hnat_desc headroom[DEF_ETRY_NUM];
 unsigned int dbg_cpu_reason_cnt[MAX_CRSN_NUM];
 
+/* Per-PPE: serializes the PPE_MIB_SER_* read sequence and the acct accumulation */
+static spinlock_t hnat_mib_lock[MAX_PPE_NUM] = {
+	[0 ... MAX_PPE_NUM - 1] = __SPIN_LOCK_UNLOCKED(hnat_mib_lock),
+};
+
 static const char * const entry_state[] = { "INVALID", "UNBIND", "BIND", "FIN" };
 
 static const char * const packet_type[] = {
@@ -1295,11 +1300,15 @@ struct hnat_accounting *hnat_get_count(struct mtk_hnat *h, u32 ppe_id,
 	if (!hnat_priv->data->per_flow_accounting)
 		return NULL;
 
-	if (read_mib(h, ppe_id, index, &bytes, &packets))
+	spin_lock_bh(&hnat_mib_lock[ppe_id]);
+	if (read_mib(h, ppe_id, index, &bytes, &packets)) {
+		spin_unlock_bh(&hnat_mib_lock[ppe_id]);
 		return NULL;
+	}
 
 	h->acct[ppe_id][index].bytes += bytes;
 	h->acct[ppe_id][index].packets += packets;
+	spin_unlock_bh(&hnat_mib_lock[ppe_id]);
 
 	if (diff) {
 		diff->bytes = bytes;

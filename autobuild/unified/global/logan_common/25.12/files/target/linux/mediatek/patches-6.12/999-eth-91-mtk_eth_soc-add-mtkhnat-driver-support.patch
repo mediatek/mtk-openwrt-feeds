@@ -178,17 +178,27 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: add mtkhnat driver support
  
  	mtk_eth_debugfs_init(eth);
  
-@@ -7669,7 +7736,9 @@ err_unreg_netdev:
- 	free_netdev(eth->dummy_dev);
+@@ -7670,7 +7737,9 @@ static int mtk_probe(struct platform_dev
+ 
+ err_unreg_netdev:
+ 	mtk_unreg_dev(eth);
++#if !defined(CONFIG_NET_MEDIATEK_HNAT) && !defined(CONFIG_NET_MEDIATEK_HNAT_MODULE)
  err_deinit_ppe:
- 	mtk_napi_del(eth);
++#endif
+ 	/* A netdev opened while probe was still registering can have queued
+ 	 * the frame-engine reset worker, which takes rtnl and drives the
+ 	 * hardware; cancel it before anything below is torn down.
+@@ -7680,7 +7749,9 @@ err_deinit_ppe:
+ 		mtk_napi_del(eth);
+ 		free_netdev(eth->dummy_dev);
+ 	}
 +#if !defined(CONFIG_NET_MEDIATEK_HNAT) && !defined(CONFIG_NET_MEDIATEK_HNAT_MODULE)
  	mtk_ppe_deinit(eth);
 +#endif
  	mtk_release_all_muxes(eth);
  	mtk_mdio_cleanup(eth);
  err_free_dev:
-@@ -7710,8 +7779,10 @@ static void mtk_remove(struct platform_d
+@@ -7721,8 +7792,10 @@ static void mtk_remove(struct platform_d
  			mtk_usxgmii_pcs_put(mac->usxgmii_pcs);
  	}
  

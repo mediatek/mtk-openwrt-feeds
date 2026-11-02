@@ -39,7 +39,7 @@
  subdir- += vdso vdso32
 --- a/arch/arm64/kernel/memdump.c
 +++ b/arch/arm64/kernel/memdump.c
-@@ -0,0 +1,281 @@
+@@ -0,0 +1,285 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2026 MediaTek Inc.
@@ -60,6 +60,7 @@
 +#include <linux/reboot.h>
 +#include <linux/crc32.h>
 +#include <linux/kexec.h>
++#include <linux/percpu.h>
 +#include <asm/kexec.h>
 +#include <asm/cacheflush.h>
 +
@@ -117,6 +118,7 @@
 +static struct pt_regs *mdump_panic_regs;
 +static size_t core_info_size;
 +static bool warn_max_range;
++static DEFINE_PER_CPU(bool, mdump_panic_info_saved);
 +
 +static int log_ram_headers_callback(struct resource *res, void *arg)
 +{
@@ -218,7 +220,8 @@
 +	struct pt_regs fixed_regs;
 +	u32 cpu;
 +
-+	if (!mdump_core_info || !mdump_panic_regs)
++	if (!mdump_core_info || !mdump_panic_regs ||
++	    this_cpu_read(mdump_panic_info_saved))
 +		return;
 +
 +	crash_setup_regs(&fixed_regs, regs);
@@ -230,11 +233,12 @@
 +
 +	mdump_core_info->panic_regs_valid = true;
 +
-+	memcpy(saved_regs, regs, sizeof(*regs));
++	memcpy(saved_regs, &fixed_regs, sizeof(fixed_regs));
 +
 +	dcache_clean_inval_poc((unsigned long)saved_regs, (unsigned long)saved_regs + sizeof(*regs));
 +
-+	arm64_atf_memory_dump_save_cpu_regs(regs, cpu);
++	arm64_atf_memory_dump_save_cpu_regs(&fixed_regs, cpu);
++	this_cpu_write(mdump_panic_info_saved, true);
 +}
 +
 +void arm64_atf_memory_dump_save_cpu_regs(struct pt_regs *regs, unsigned int cpu)

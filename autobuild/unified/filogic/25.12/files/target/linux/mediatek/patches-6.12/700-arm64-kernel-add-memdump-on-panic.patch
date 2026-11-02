@@ -51,7 +51,7 @@
  subdir- += vdso vdso32
 --- a/arch/arm64/kernel/memdump.c
 +++ b/arch/arm64/kernel/memdump.c
-@@ -0,0 +1,298 @@
+@@ -0,0 +1,303 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2026 MediaTek Inc.
@@ -248,7 +248,7 @@
 +	pr_err("Memory dump SMCC failed\n");
 +}
 +
-+void arm64_atf_memory_dump_save_info(struct pt_regs *regs)
++noinline void arm64_atf_memory_dump_save_info(struct pt_regs *regs)
 +{
 +	struct pt_regs *saved_regs = (struct pt_regs *)mdump_panic_regs;
 +	struct pt_regs fixed_regs;
@@ -259,6 +259,11 @@
 +		return;
 +
 +	crash_setup_regs(&fixed_regs, regs);
++	if (!regs) {
++		fixed_regs.regs[29] = (unsigned long)__builtin_frame_address(1);
++		fixed_regs.sp = fixed_regs.regs[29];
++		fixed_regs.pc = fixed_regs.regs[30];
++	}
 +	if (vmcoreinfo_note)
 +		crash_save_vmcoreinfo();
 +
@@ -374,26 +379,6 @@
  	set_cpu_online(cpu, false);
  
  	sdei_mask_local_cpu();
---- a/arch/arm64/kernel/traps.c
-+++ b/arch/arm64/kernel/traps.c
-@@ -49,6 +49,8 @@
- #include <asm/system_misc.h>
- #include <asm/sysreg.h>
- 
-+#include <asm/memdump.h>
-+
- static bool __kprobes __check_eq(unsigned long pstate)
- {
- 	return (pstate & PSR_Z_BIT) != 0;
-@@ -228,6 +230,8 @@ void die(const char *str, struct pt_regs
- 	add_taint(TAINT_DIE, LOCKDEP_NOW_UNRELIABLE);
- 	oops_exit();
- 
-+	arm64_atf_memory_dump_save_info(regs);
-+
- 	if (in_interrupt())
- 		panic("%s: Fatal exception in interrupt", str);
- 	if (panic_on_oops)
 --- a/kernel/Kconfig.kexec
 +++ b/kernel/Kconfig.kexec
 @@ -5,6 +5,9 @@ menu "Kexec and crash features"
@@ -493,7 +478,18 @@
  #define PANIC_TIMER_STEP 100
  #define PANIC_BLINK_SPD 18
  
-@@ -372,7 +376,8 @@ void panic(const char *fmt, ...)
+@@ -340,6 +344,10 @@ void panic(const char *fmt, ...)
+ 	} else if (old_cpu != this_cpu)
+ 		panic_smp_self_stop();
+ 
++#ifdef CONFIG_MTK_ATF_MEMDUMP
++	arm64_atf_memory_dump_save_info(NULL);
++#endif
++
+ 	console_verbose();
+ 	bust_spinlocks(1);
+ 	va_start(args, fmt);
+@@ -372,7 +380,8 @@ void panic(const char *fmt, ...)
  	if (!_crash_kexec_post_notifiers)
  		__crash_kexec(NULL);
  
@@ -503,7 +499,7 @@
  
  	printk_legacy_allow_panic_sync();
  
-@@ -413,6 +418,10 @@ void panic(const char *fmt, ...)
+@@ -413,6 +422,10 @@ void panic(const char *fmt, ...)
  
  	panic_print_sys_info(true);
  

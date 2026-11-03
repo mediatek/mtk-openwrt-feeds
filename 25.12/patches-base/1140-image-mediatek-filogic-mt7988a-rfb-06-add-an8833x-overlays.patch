@@ -1,0 +1,25 @@
+--- a/target/linux/mediatek/image/filogic.mk
++++ b/target/linux/mediatek/image/filogic.mk
+@@ -2070,17 +2070,21 @@ define Device/mediatek_mt7988a-rfb
+ 	mt7988a-rfb-eth0-gsw \
+ 	mt7988a-rfb-eth1-aqr \
+ 	mt7988a-rfb-eth1-an8831x \
++	mt7988a-rfb-eth1-an8833x \
+ 	mt7988a-rfb-eth1-cux3410 \
+ 	mt7988a-rfb-eth1-i2p5g-phy \
+ 	mt7988a-rfb-eth1-mxl \
+ 	mt7988a-rfb-eth1-sfp \
+ 	mt7988a-rfb-eth1-sfp-an8831x \
++	mt7988a-rfb-eth1-sfp-an8833x \
+ 	mt7988a-rfb-eth1-sfp-aqr \
+ 	mt7988a-rfb-eth2-aqr \
+ 	mt7988a-rfb-eth2-an8831x \
++	mt7988a-rfb-eth2-an8833x \
+ 	mt7988a-rfb-eth2-cux3410 \
+ 	mt7988a-rfb-eth2-mxl \
+ 	mt7988a-rfb-eth2-mxl86252-an8831x \
++	mt7988a-rfb-eth2-mxl86252-an8833x \
+ 	mt7988a-rfb-eth2-mxl86252-aqr \
+ 	mt7988a-rfb-eth2-sfp \
+ 	mt7988a-rfb-spidev \
+

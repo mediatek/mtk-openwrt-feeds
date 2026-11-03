@@ -47,7 +47,7 @@ platform_change_openwrt_config() {
 }
 
 filogic_change_kernel_config() {
-	extra_firmware="airoha/EthMD32.dm.bin airoha/EthMD32.DSP.bin airoha/an8811hb/EthMD32_CRC.DM.bin airoha/an8811hb/EthMD32_CRC.DSP.bin as21x1x_fw.bin "
+	extra_firmware="airoha/EthMD32.dm.bin airoha/EthMD32.DSP.bin airoha/an8811hb/EthMD32_CRC.DM.bin airoha/an8811hb/EthMD32_CRC.DSP.bin as21x1x_fw.bin as22x1x_fw.bin "
 	extra_firmware+="Rhe-05.06-Candidate9-AQR_Mediatek_23B_P5_ID45824_LCLVER1.cld AQR-G4_v5.7.0-AQR_EVB_Generic_X3410_StdCfg_MDISwap_USX_ID46316_VER2148.cld "
 
 	# Base configs
@@ -196,7 +196,8 @@ copy_phy_firmware() {
 		firmware_dir="target/linux/mediatek/files-${kernel_ver}/drivers/base/firmware_loader/builtin"
 
 		# ensure the PHY firmware is located in the same directory when compiling the kernel's built-in PHY driver
-		copy_file "${openwrt_root}/package/kernel/as21xxx/firmware/as21x1x_fw.bin" "${firmware_dir}"
+		copy_file "${openwrt_root}/package/kernel/as2xxxx/firmware/as21x1x_fw.bin" "${firmware_dir}"
+		copy_file "${openwrt_root}/package/kernel/as2xxxx/firmware/as22x1x_fw.bin" "${firmware_dir}"
 		copy_file "${openwrt_root}/package/kernel/aqr10g-phy-fw/files/Rhe-05.06-Candidate9-AQR_Mediatek_23B_P5_ID45824_LCLVER1.cld" "${firmware_dir}"
 		copy_file "${openwrt_root}/package/kernel/aqr10g-phy-fw/files/AQR-G4_v5.7.0-AQR_EVB_Generic_X3410_StdCfg_MDISwap_USX_ID46316_VER2148.cld" "${firmware_dir}"
 		copy_file "${openwrt_root}/package/kernel/airoha-phy-fw/files/an8811hb/EthMD32_CRC.DM.bin" "${firmware_dir}/airoha/an8811hb"

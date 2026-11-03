@@ -8,7 +8,7 @@ CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_mediatek_mt7988a-rfb-mxl86252=y
 CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_mediatek_mt7988d-rfb=y
 # CONFIG_TARGET_DEVICE_mediatek_filogic_DEVICE_mediatek_mt7986b-rfb is not set
 CONFIG_PACKAGE_aqr10g-phy-firmware=y
-CONFIG_PACKAGE_as21xxx-firmware=y
+CONFIG_PACKAGE_as2xxxx-firmware=y
 CONFIG_PACKAGE_mt798x-2p5g-phy-firmware-internal=y
 CONFIG_PACKAGE_kmod-gpio-pcf857x=y
 CONFIG_PACKAGE_kmod-hwmon-ina2xx=y

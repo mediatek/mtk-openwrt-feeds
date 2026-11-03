@@ -292,9 +292,9 @@ static ssize_t l4s_qos_show(struct device *dev, struct device_attribute *attr, c
 		.sub_type = NPU_L4S_NET_CMD_GET,
 	};
 	u32 dl_qid_default;
-	u32 dl_qid_congested;
+	u32 dl_qid_l4s_capable;
 	u32 ul_qid_default;
-	u32 ul_qid_congested;
+	u32 ul_qid_l4s_capable;
 	int ret;
 
 	cmd.arg[0] = NPU_L4S_NET_CMD_GET_DL_DEFAULT_QID;
@@ -303,11 +303,11 @@ static ssize_t l4s_qos_show(struct device *dev, struct device_attribute *attr, c
 		return 0;
 	dl_qid_default = cmd.ret[0];
 
-	cmd.arg[0] = NPU_L4S_NET_CMD_GET_DL_CONGESTED_QID;
+	cmd.arg[0] = NPU_L4S_NET_CMD_GET_DL_CAPABLE_QID;
 	ret = mtk_npu_net_send_cmd_mgmt(&cmd);
 	if (ret || cmd.return_cnt == 0)
 		return 0;
-	dl_qid_congested = cmd.ret[0];
+	dl_qid_l4s_capable = cmd.ret[0];
 
 	cmd.arg[0] = NPU_L4S_NET_CMD_GET_UL_DEFAULT_QID;
 	ret = mtk_npu_net_send_cmd_mgmt(&cmd);
@@ -315,16 +315,16 @@ static ssize_t l4s_qos_show(struct device *dev, struct device_attribute *attr, c
 		return 0;
 	ul_qid_default = cmd.ret[0];
 
-	cmd.arg[0] = NPU_L4S_NET_CMD_GET_UL_CONGESTED_QID;
+	cmd.arg[0] = NPU_L4S_NET_CMD_GET_UL_CAPABLE_QID;
 	ret = mtk_npu_net_send_cmd_mgmt(&cmd);
 	if (ret || cmd.return_cnt == 0)
 		return 0;
-	ul_qid_congested = cmd.ret[0];
+	ul_qid_l4s_capable = cmd.ret[0];
 
 	return scnprintf(buf, PAGE_SIZE,
-			 "L4S downlink default qid: %u, L4S downlink congested qid: %u\n"
-			 "L4S uplink default qid: %u, L4s uplink congested qid: %u\n",
-			 dl_qid_default, dl_qid_congested, ul_qid_default, ul_qid_congested);
+			 "L4S downlink qid default: %u, qid l4s_capable: %u\n"
+			 "L4S uplink qid default: %u, qid l4s_capable: %u\n",
+			 dl_qid_default, dl_qid_l4s_capable, ul_qid_default, ul_qid_l4s_capable);
 }
 
 static ssize_t l4s_qos_store(struct device *dev, struct device_attribute *attr,
@@ -346,15 +346,15 @@ static ssize_t l4s_qos_store(struct device *dev, struct device_attribute *attr,
 	if (!strncmp(dir, "downlink", strlen("downlink"))) {
 		if (!strncmp(q_type, "default", strlen("default")))
 			cmd.arg[0] = NPU_L4S_NET_CMD_SET_DL_DEFAULT_QID;
-		else if (!strncmp(q_type, "congested", strlen("congested")))
-			cmd.arg[0] = NPU_L4S_NET_CMD_SET_DL_CONGESTED_QID;
+		else if (!strncmp(q_type, "l4s_capable", strlen("l4s_capable")))
+			cmd.arg[0] = NPU_L4S_NET_CMD_SET_DL_CAPABLE_QID;
 		else
 			return -EINVAL;
 	} else if (!strncmp(dir, "uplink", strlen("uplink"))) {
 		if (!strncmp(q_type, "default", strlen("default")))
 			cmd.arg[0] = NPU_L4S_NET_CMD_SET_UL_DEFAULT_QID;
-		else if (!strncmp(q_type, "congested", strlen("congested")))
-			cmd.arg[0] = NPU_L4S_NET_CMD_SET_UL_CONGESTED_QID;
+		else if (!strncmp(q_type, "l4s_capable", strlen("l4s_capable")))
+			cmd.arg[0] = NPU_L4S_NET_CMD_SET_UL_CAPABLE_QID;
 		else
 			return -EINVAL;
 	} else {

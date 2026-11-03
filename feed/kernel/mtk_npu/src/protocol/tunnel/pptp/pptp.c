@@ -215,6 +215,35 @@ static inline int pptp_gre_len_evaluate(struct sk_buff *skb)
 	return -EINVAL;
 }
 
+#if KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE
+static void pptp_tnl_flow_param_setup(const struct net_device_path *path,
+				      struct npu_params *params)
+{
+	struct npu_pptp_params *pptpp = &params->tunnel.pptp;
+	struct npu_ip_params *ipp = &params->network.ip;
+	int seq_gen_idx;
+
+	params->mac.type = NPU_MAC_ETH;
+	memcpy(params->mac.eth.h_dest, path->tunnel.h_dest, ETH_ALEN);
+	memcpy(params->mac.eth.h_source, path->tunnel.h_source, ETH_ALEN);
+	params->mac.eth.h_proto = htons(ETH_P_IP);
+
+	params->network.type = NPU_NETWORK_IP;
+	ipp->sip = path->tunnel.sip.ip;
+	ipp->dip = path->tunnel.dip.ip;
+	ipp->proto = IPPROTO_GRE;
+
+	params->tunnel.type = NPU_TUNNEL_PPTP;
+	pptpp->dl_call_id = htons(path->tunnel.pptp.call_id);
+	pptpp->ul_call_id = htons(path->tunnel.pptp.peer_call_id);
+
+	if (pptp_get_seq_gen_idx(path->tunnel.pptp.peer_call_id,
+				 path->tunnel.pptp.seq_sent, &seq_gen_idx))
+		return;
+	pptpp->seq_gen_idx = (u8)seq_gen_idx;
+}
+#endif
+
 static int pptp_tnl_decap_param_setup(struct sk_buff *skb,
 				      struct npu_params *params)
 {
@@ -499,6 +528,10 @@ static void pptp_tnl_statistic_clear(struct npu_tnl_type *tnl_type)
 static struct npu_tnl_type pptp_type = {
 	.type_name = TYPE_NAME_PPTP,
 	.cls_entry_setup = pptp_cls_entry_setup,
+#if KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE
+	.ndev_path_type = DEV_PATH_PPTP,
+	.tnl_flow_param_setup = pptp_tnl_flow_param_setup,
+#endif
 	.tnl_decap_param_setup = pptp_tnl_decap_param_setup,
 	.tnl_encap_param_setup = pptp_tnl_encap_param_setup,
 	.tnl_debug_param_setup = pptp_tnl_debug_param_setup,

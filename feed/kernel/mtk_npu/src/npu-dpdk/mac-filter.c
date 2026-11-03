@@ -488,6 +488,22 @@ int mtk_npu_dpdk_mac_filter_entry_query(struct npu_dpdk_mf_query *query)
 	}
 }
 
+u32 mtk_npu_dpdk_mac_filter_drop_pkt_count(void)
+{
+	struct net_cmd cmd = {
+		.type = NPU_NET_CMD_TYPE_DPDK,
+		.sub_type = NPU_DPDK_NET_CMD_PARAMS,
+		.arg[0] = NPU_DPDK_NET_CMD_MAC_FILTER_PARAMS_DROP_PKT_GET,
+	};
+	int ret;
+
+	ret = mtk_npu_net_send_cmd_mgmt(&cmd);
+	if (ret || cmd.return_cnt != NET_RET_CNT_1)
+		return 0;
+
+	return cmd.ret[0];
+}
+
 int mtk_npu_dpdk_mac_filter_init(void)
 {
 	int ret;

@@ -213,6 +213,7 @@ static int mtk_npu_flow_tnl_offloadable(const struct net_device_path *path)
 
 	switch (path->type) {
 	case DEV_PATH_L2TP:
+	case DEV_PATH_PPTP:
 		break;
 	/* TODO: add other supported tunnel */
 	default:

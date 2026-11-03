@@ -20,6 +20,7 @@ enum npu_dpdk_cmd {
 
 enum npu_dpdk_params_cmd {
 	NPU_DPDK_NET_CMD_MAC_FILTER_PARAMS_BASE_ADDR_GET,
+	NPU_DPDK_NET_CMD_MAC_FILTER_PARAMS_DROP_PKT_GET,
 
 	__NPU_DPDK_NET_CMD_PARAMS_MAX,
 };

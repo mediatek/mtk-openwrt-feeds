@@ -111,6 +111,7 @@ int mtk_npu_dpdk_mac_filter_info_get_by_ofs(struct npu_dpdk_mac_info *minfo, u32
 int mtk_npu_dpdk_mac_filter_enable(bool en);
 int mtk_npu_dpdk_mac_filter_config(const struct npu_dpdk_mf_cfg *cfg);
 int mtk_npu_dpdk_mac_filter_entry_query(struct npu_dpdk_mf_query *query);
+u32 mtk_npu_dpdk_mac_filter_drop_pkt_count(void);
 int mtk_npu_dpdk_mac_filter_init(void);
 void mtk_npu_dpdk_mac_filter_deinit(void);
 #endif /* _NPU_DPDK_MAC_FILTER */

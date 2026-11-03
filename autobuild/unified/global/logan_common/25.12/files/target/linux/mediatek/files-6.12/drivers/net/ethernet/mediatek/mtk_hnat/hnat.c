@@ -403,7 +403,7 @@ int entry_delete_by_mac(u8 *mac)
 	for (i = 0; i < CFG_PPE_NUM; i++) {
 		entry = hnat_priv->foe_table_cpu[i];
 		cnt = 0;
-		for (index = 0; index < DEF_ETRY_NUM; entry++, index++) {
+		for (index = 0; index < hnat_priv->foe_etry_num; entry++, index++) {
 			if (entry->bfib1.state == BIND &&
 			    entry_mac_cmp(entry, mac, ENTRY_CMP_ANY)) {
 				spin_lock_bh(&hnat_priv->entry_lock);
@@ -442,7 +442,7 @@ int entry_delete_by_ip(bool is_ipv4, void *addr)
 	for (i = 0; i < CFG_PPE_NUM; i++) {
 		entry = hnat_priv->foe_table_cpu[i];
 		cnt = 0;
-		for (index = 0; index < DEF_ETRY_NUM; entry++, index++) {
+		for (index = 0; index < hnat_priv->foe_etry_num; entry++, index++) {
 			if (entry->bfib1.state == BIND &&
 			    entry_ip_cmp(entry, is_ipv4, addr, ENTRY_CMP_ANY)) {
 				spin_lock_bh(&hnat_priv->entry_lock);
@@ -629,7 +629,7 @@ static int entry_delete_by_bssid_wcid(u32 wdma_idx, u16 bssid, u16 wcid)
 	for (i = 0; i < CFG_PPE_NUM; i++) {
 		entry = hnat_priv->foe_table_cpu[i];
 		cnt = 0;
-		for (index = 0; index < DEF_ETRY_NUM; entry++, index++) {
+		for (index = 0; index < hnat_priv->foe_etry_num; entry++, index++) {
 			if (entry->bfib1.state != BIND)
 				continue;
 
@@ -767,7 +767,7 @@ static void hnat_flow_entry_teardown_all(u32 ppe_id)
 	int index;
 
 	spin_lock_bh(&hnat_priv->flow_entry_lock);
-	for (index = 0; index < DEF_ETRY_NUM / 4; index++) {
+	for (index = 0; index < hnat_priv->foe_etry_num / 4; index++) {
 		head = &hnat_priv->foe_flow[ppe_id][index];
 		hlist_for_each_entry_safe(flow_entry, n, head, list) {
 			hnat_flow_entry_delete(flow_entry);
@@ -786,7 +786,7 @@ static void hnat_flow_entry_teardown_handler(struct work_struct *work)
 
 	spin_lock_bh(&hnat_priv->flow_entry_lock);
 	for (i = 0; i < CFG_PPE_NUM; i++) {
-		for (index = 0; index < DEF_ETRY_NUM / 4; index++) {
+		for (index = 0; index < hnat_priv->foe_etry_num / 4; index++) {
 			head = &hnat_priv->foe_flow[i][index];
 			hlist_for_each_entry_safe(flow_entry, n, head, list) {
 				/* If the entry has not been used for 30 seconds, teardown it. */

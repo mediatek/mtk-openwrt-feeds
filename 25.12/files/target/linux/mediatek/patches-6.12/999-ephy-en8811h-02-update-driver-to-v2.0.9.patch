@@ -1,0 +1,94 @@
+---
+[v1] net: phy: air_en8811h: update driver to v2.0.9
+
+Improve the internal configuration to address timing-related abnormal
+behavior in the internal processor.
+---
+v1: Update EN8811H driver to v2.0.9.
+---
+
+From d10347423bdb48a4c2b45e496cbc48d22a43b352 Mon Sep 17 00:00:00 2001
+From: Mason Chang <mason-cw.chang@mediatek.com>
+Date: Tue, 3 Nov 2026 17:11:36 +0800
+Subject: [PATCH] net: phy: air_en8811h: update driver to v2.0.9
+
+Improve the internal configuration to address timing-related abnormal
+behavior in the internal processor.
+
+Without this patch, Airoha EN8811H 2.5G PHY may fail to transmit and
+receive packets properly.
+---
+ drivers/net/phy/air_en8811h.c | 22 ----------------------
+ drivers/net/phy/air_en8811h.h |  2 +-
+ 2 files changed, 1 insertion(+), 23 deletions(-)
+
+diff --git a/drivers/net/phy/air_en8811h.c b/drivers/net/phy/air_en8811h.c
+index 9e8a1df..f06c86c 100644
+--- a/drivers/net/phy/air_en8811h.c
++++ b/drivers/net/phy/air_en8811h.c
+@@ -547,12 +547,6 @@ static int en8811h_load_firmware(struct phy_device *phydev)
+ 	if (ret < 0)
+ 		goto en8811h_load_firmware_out;
+ 
+-	ret = air_buckpbus_reg_modify(phydev, EN8811H_CONTROL,
+-				      EN8811H_CONTROL_INTERNAL,
+-				      EN8811H_CONTROL_INTERNAL);
+-	if (ret < 0)
+-		return ret;
+-
+ 	ret = air_buckpbus_reg_write(phydev, EN8811H_FW_CTRL_1,
+ 				     EN8811H_FW_CTRL_1_FINISH);
+ 	if (ret < 0)
+@@ -590,12 +584,6 @@ static int en8811h_restart_mcu(struct phy_device *phydev)
+ 	if (ret < 0)
+ 		return ret;
+ 
+-	ret = air_buckpbus_reg_modify(phydev, EN8811H_CONTROL,
+-				      EN8811H_CONTROL_INTERNAL,
+-				      EN8811H_CONTROL_INTERNAL);
+-	if (ret < 0)
+-		return ret;
+-
+ 	ret = air_buckpbus_reg_write(phydev, EN8811H_FW_CTRL_1,
+ 				     EN8811H_FW_CTRL_1_FINISH);
+ 	if (ret < 0)
+@@ -1070,11 +1058,6 @@ static int en8811h_probe(struct phy_device *phydev)
+ 		if (ret < 0)
+ 			return ret;
+ 
+-		ret = air_buckpbus_reg_modify(phydev, EN8811H_CONTROL,
+-					      EN8811H_CONTROL_INTERNAL, 0);
+-		if (ret < 0)
+-			return ret;
+-
+ 		phydev_info(phydev, "EN8811H initialize OK! (%s)\n",
+ 			    EN8811H_DRIVER_VERSION);
+ 	} else
+@@ -1153,11 +1136,6 @@ static int en8811h_config_init(struct phy_device *phydev)
+ 			return ret;
+ 	}
+ 
+-	ret = air_buckpbus_reg_modify(phydev, EN8811H_CONTROL,
+-				      EN8811H_CONTROL_INTERNAL, 0);
+-	if (ret < 0)
+-		return ret;
+-
+ 	ret = air_buckpbus_reg_read(phydev, EN8811H_CLK_CGM, &pbus_value);
+ 	if (ret < 0)
+ 		return ret;
+diff --git a/drivers/net/phy/air_en8811h.h b/drivers/net/phy/air_en8811h.h
+index 1682ef2..1a2bac6 100644
+--- a/drivers/net/phy/air_en8811h.h
++++ b/drivers/net/phy/air_en8811h.h
+@@ -12,7 +12,7 @@
+ 
+ #define MAX_RETRY                   25
+ 
+-#define EN8811H_DRIVER_VERSION  "v2.0.8"
++#define EN8811H_DRIVER_VERSION  "v2.0.9"
+ 
+ 
+ /***************************************************************
+-- 
+2.45.2
+

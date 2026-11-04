@@ -39,7 +39,7 @@
  subdir- += vdso vdso32
 --- a/arch/arm64/kernel/memdump.c
 +++ b/arch/arm64/kernel/memdump.c
-@@ -0,0 +1,298 @@
+@@ -0,0 +1,310 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2026 MediaTek Inc.
@@ -155,19 +155,29 @@
 +	mdump_core_info->panic_cpu = smp_processor_id();
 +
 +	note_buf = (uintptr_t *)((uintptr_t)mdump_core_info + sizeof(*mdump_core_info));
-+	mdump_core_info->note_buf_pa = __pa(note_buf);
-+	mdump_core_info->note_buf_size = sizeof(note_buf_t);
++	if (crash_notes) {
++		mdump_core_info->note_buf_pa = __pa(note_buf);
++		mdump_core_info->note_buf_size = sizeof(note_buf_t);
 +
-+	mdump_core_info->vmcoreinfo_note_pa = paddr_vmcoreinfo_note();
-+	mdump_core_info->vmcoreinfo_note_size = VMCOREINFO_NOTE_SIZE;
++		for_each_present_cpu(cpu) {
++			note_buf[cpu] = per_cpu_ptr_to_phys(per_cpu_ptr(crash_notes, cpu));
++		}
++	} else {
++		mdump_core_info->note_buf_pa = 0;
++		mdump_core_info->note_buf_size = 0;
++	}
++
++	if (vmcoreinfo_note) {
++		mdump_core_info->vmcoreinfo_note_pa = paddr_vmcoreinfo_note();
++		mdump_core_info->vmcoreinfo_note_size = VMCOREINFO_NOTE_SIZE;
++	} else {
++		mdump_core_info->vmcoreinfo_note_pa = 0;
++		mdump_core_info->vmcoreinfo_note_size = 0;
++	}
 +
 +	mdump_core_info->kernel_va = (uintptr_t)_text;
 +	mdump_core_info->kernel_pa = __pa_symbol(_text);
 +	mdump_core_info->kernel_size = _end - _text;
-+
-+	for_each_present_cpu(cpu) {
-+		note_buf[cpu] = per_cpu_ptr_to_phys(per_cpu_ptr(crash_notes, cpu));
-+	}
 +
 +	mem_ranges = (struct memdump_mem_range *)((uintptr_t)note_buf + NR_CPUS * sizeof(uintptr_t));
 +	used_size = (uintptr_t)mem_ranges - (uintptr_t)mdump_core_info;
@@ -235,11 +245,13 @@
 +		return;
 +
 +	crash_setup_regs(&fixed_regs, regs);
-+	crash_save_vmcoreinfo();
++	if (vmcoreinfo_note)
++		crash_save_vmcoreinfo();
 +
 +	/* for crashing cpu */
 +	cpu = smp_processor_id();
-+	crash_save_cpu(&fixed_regs, cpu);
++	if (crash_notes)
++		crash_save_cpu(&fixed_regs, cpu);
 +
 +	memcpy(saved_regs, &fixed_regs, sizeof(fixed_regs));
 +
@@ -337,7 +349,7 @@
 +	return 0;
 +}
 +
-+subsys_initcall(memdump_core_info_init);
++subsys_initcall_sync(memdump_core_info_init);
 --- a/arch/arm64/kernel/smp.c
 +++ b/arch/arm64/kernel/smp.c
 @@ -6,6 +6,8 @@
@@ -432,6 +444,23 @@
  #include <linux/buildid.h>
  #include <linux/init.h>
  #include <linux/utsname.h>
+@@ -423,6 +423,6 @@ void crash_save_cpu(struct pt_regs *regs, int cpu)
+ 	u32 *buf;
+ 
+-	if ((cpu < 0) || (cpu >= nr_cpu_ids))
++	if (!crash_notes || (cpu < 0) || (cpu >= nr_cpu_ids))
+ 		return;
+ 
+ 	/* Using ELF notes here is opportunistic.
+@@ -479,7 +479,7 @@ static int __init crash_notes_memory_init
+ }
+ subsys_initcall(crash_notes_memory_init);
+ 
+-#endif /*CONFIG_CRASH_DUMP*/
++#endif /*CONFIG_CRASH_CORE*/
+ 
+ #ifdef CONFIG_CRASH_HOTPLUG
+ #undef pr_fmt
 --- a/kernel/kexec_core.c
 +++ b/kernel/kexec_core.c
 @@ -12,6 +12,8 @@

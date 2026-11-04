@@ -1,3 +1,24 @@
+--- a/arch/arm64/Kconfig
++++ b/arch/arm64/Kconfig
+@@ -1617,6 +1617,18 @@ config PARAVIRT_TIME_ACCOUNTING
+ 
+ 	  If in doubt, say N here.
+ 
++config MTK_ATF_MEMDUMP
++	bool "MediaTek ATF-assisted memory dump"
++	default y
++	depends on ARCH_MEDIATEK
++	select CRASH_CORE
++	select CRASH_RESERVE
++	select KEXEC_CORE
++	select STACKTRACE_BUILD_ID if PRINTK
++	select VMCORE_INFO
++	help
++	  Enable MediaTek ATF-assisted memory dump when the kernel panics.
++
+ config ARCH_SUPPORTS_KEXEC
+ 	def_bool PM_SLEEP_SMP
+ 
 --- a/arch/arm64/include/asm/memdump.h
 +++ b/arch/arm64/include/asm/memdump.h
 @@ -0,0 +1,17 @@
@@ -20,35 +41,23 @@
 +#endif /* _ARM64_MEMDUMP_H_ */
 --- a/arch/arm64/kernel/Makefile
 +++ b/arch/arm64/kernel/Makefile
-@@ -64,7 +64,7 @@ obj-$(CONFIG_KEXEC_FILE)		+= machine_kex
- obj-$(CONFIG_ARM64_RELOC_TEST)		+= arm64-reloc-test.o
- arm64-reloc-test-y := reloc_test_core.o reloc_test_syms.o
- obj-$(CONFIG_CRASH_DUMP)		+= crash_dump.o
--obj-$(CONFIG_VMCORE_INFO)		+= vmcore_info.o
-+obj-y					+= vmcore_info.o
- obj-$(CONFIG_ARM_SDE_INTERFACE)		+= sdei.o
- obj-$(CONFIG_ARM64_PTR_AUTH)		+= pointer_auth.o
- obj-$(CONFIG_ARM64_MTE)			+= mte.o
 @@ -83,5 +83,7 @@ ifeq ($(CONFIG_DEBUG_EFI),y)
  AFLAGS_head.o += -DVMLINUX_PATH="\"$(realpath $(objtree)/vmlinux)\""
  endif
  
-+obj-y					+= memdump.o
++obj-$(CONFIG_MTK_ATF_MEMDUMP)		+= memdump.o
 +
  # for cleaning
  subdir- += vdso vdso32
 --- a/arch/arm64/kernel/memdump.c
 +++ b/arch/arm64/kernel/memdump.c
-@@ -0,0 +1,315 @@
+@@ -0,0 +1,298 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2026 MediaTek Inc.
 + *
 + * Author: Weijie Gao <weijie.gao@mediatek.com>
 + */
-+
-+#define CONFIG_CRASH_DUMP	1
-+#define CONFIG_KEXEC_CORE	1
 +
 +#include <linux/kernel.h>
 +#include <linux/gfp.h>
@@ -283,20 +292,6 @@
 +			       (unsigned long)(saved_regs + 1));
 +}
 +
-+/* dummy functions */
-+void machine_kexec_cleanup(struct kimage *kimage)
-+{
-+}
-+
-+void machine_crash_shutdown(struct pt_regs *regs)
-+{
-+}
-+
-+void machine_kexec(struct kimage *kimage)
-+{
-+	BUG();
-+}
-+
 +static void *__init alloc_zero_pages(size_t size, u32 *retorder)
 +{
 +	struct page *page;
@@ -357,49 +352,28 @@
 +subsys_initcall_sync(memdump_core_info_init);
 --- a/arch/arm64/kernel/smp.c
 +++ b/arch/arm64/kernel/smp.c
-@@ -6,6 +6,8 @@
-  * Copyright (C) 2012 ARM Ltd.
-  */
- 
-+#define CONFIG_CRASH_DUMP	1
-+#define CONFIG_KEXEC_CORE	1
- #include <linux/acpi.h>
- #include <linux/arm_sdei.h>
- #include <linux/delay.h>
-@@ -55,6 +57,8 @@
+@@ -55,6 +55,10 @@
  
  #include <trace/events/ipi.h>
  
++#ifdef CONFIG_MTK_ATF_MEMDUMP
 +#include <asm/memdump.h>
++#endif
 +
  /*
   * as from 2.5, kernels no longer have an init_tasks structure
   * so we need some other way of telling a new secondary core
-@@ -903,6 +907,8 @@ static void __noreturn ipi_cpu_crash_sto
+@@ -903,6 +907,10 @@ static void __noreturn ipi_cpu_crash_sto
  
  	crash_save_cpu(regs, cpu);
  
++#ifdef CONFIG_MTK_ATF_MEMDUMP
 +	arm64_atf_memory_dump_save_cpu_regs(regs, cpu);
++#endif
 +
  	set_cpu_online(cpu, false);
  
  	sdei_mask_local_cpu();
-@@ -970,10 +976,13 @@ static void do_handle_IPI(int ipinr)
- 
- 	case IPI_CPU_STOP:
- 	case IPI_CPU_STOP_NMI:
--		if (IS_ENABLED(CONFIG_KEXEC_CORE) && crash_stop) {
-+#ifdef CONFIG_KEXEC_CORE
-+		if (crash_stop) {
- 			ipi_cpu_crash_stop(cpu, get_irq_regs());
- 			unreachable();
--		} else {
-+		} else
-+#endif
-+		{
- 			local_cpu_stop(cpu);
- 		}
- 		break;
 --- a/arch/arm64/kernel/traps.c
 +++ b/arch/arm64/kernel/traps.c
 @@ -49,6 +49,8 @@
@@ -420,35 +394,75 @@
  	if (in_interrupt())
  		panic("%s: Fatal exception in interrupt", str);
  	if (panic_on_oops)
+--- a/kernel/Kconfig.kexec
++++ b/kernel/Kconfig.kexec
+@@ -5,6 +5,9 @@ menu "Kexec and crash features"
+ config CRASH_RESERVE
+ 	bool
+ 
++config CRASH_CORE
++	bool
++
+ config VMCORE_INFO
+ 	bool
+ 
+@@ -99,6 +102,7 @@ config CRASH_DUMP
+ 	default ARCH_DEFAULT_CRASH_DUMP
+ 	depends on ARCH_SUPPORTS_CRASH_DUMP
+ 	depends on KEXEC_CORE
++	select CRASH_CORE
+ 	select VMCORE_INFO
+ 	select CRASH_RESERVE
+ 	help
 --- a/kernel/Makefile
 +++ b/kernel/Makefile
-@@ -68,10 +68,10 @@ obj-$(CONFIG_MODULE_SIG_FORMAT) += modul
- obj-$(CONFIG_KALLSYMS) += kallsyms.o
- obj-$(CONFIG_KALLSYMS_SELFTEST) += kallsyms_selftest.o
- obj-$(CONFIG_BSD_PROCESS_ACCT) += acct.o
--obj-$(CONFIG_VMCORE_INFO) += vmcore_info.o elfcorehdr.o
--obj-$(CONFIG_CRASH_RESERVE) += crash_reserve.o
--obj-$(CONFIG_KEXEC_CORE) += kexec_core.o
+@@ -71,7 +71,7 @@ obj-$(CONFIG_BSD_PROCESS_ACCT) += acct.o
+ obj-$(CONFIG_VMCORE_INFO) += vmcore_info.o elfcorehdr.o
+ obj-$(CONFIG_CRASH_RESERVE) += crash_reserve.o
+ obj-$(CONFIG_KEXEC_CORE) += kexec_core.o
 -obj-$(CONFIG_CRASH_DUMP) += crash_core.o
-+obj-y += vmcore_info.o elfcorehdr.o
-+obj-y += crash_reserve.o
-+obj-y += kexec_core.o
-+obj-y += crash_core.o
++obj-$(CONFIG_CRASH_CORE) += crash_core.o
  obj-$(CONFIG_KEXEC) += kexec.o
  obj-$(CONFIG_KEXEC_FILE) += kexec_file.o
  obj-$(CONFIG_KEXEC_ELF) += kexec_elf.o
+--- a/include/linux/crash_core.h
++++ b/include/linux/crash_core.h
+@@ -14,7 +14,7 @@ struct crash_mem {
+ 	struct range ranges[] __counted_by(max_nr_ranges);
+ };
+ 
+-#ifdef CONFIG_CRASH_DUMP
++#ifdef CONFIG_CRASH_CORE
+ 
+ int crash_shrink_memory(unsigned long new_size);
+ ssize_t crash_get_memory_size(void);
+@@ -79,7 +79,7 @@ int kexec_crash_loaded(void);
+ void crash_save_cpu(struct pt_regs *regs, int cpu);
+ extern int kimage_crash_copy_vmcoreinfo(struct kimage *image);
+ 
+-#else /* !CONFIG_CRASH_DUMP*/
++#else /* !CONFIG_CRASH_CORE*/
+ struct pt_regs;
+ struct task_struct;
+ struct kimage;
+@@ -89,5 +89,5 @@ static inline int kexec_crash_loaded(void
+ static inline void crash_save_cpu(struct pt_regs *regs, int cpu) {};
+ static inline int kimage_crash_copy_vmcoreinfo(struct kimage *image) { return 0; };
+-#endif /* CONFIG_CRASH_DUMP*/
++#endif /* CONFIG_CRASH_CORE*/
+ 
+ #endif /* LINUX_CRASH_CORE_H */
 --- a/kernel/crash_core.c
 +++ b/kernel/crash_core.c
-@@ -6,6 +6,9 @@
+@@ -36,7 +36,7 @@
+ /* Per cpu memory for storing cpu states in case of system crash. */
+ note_buf_t __percpu *crash_notes;
  
- #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+-#ifdef CONFIG_CRASH_DUMP
++#ifdef CONFIG_CRASH_CORE
  
-+#define CONFIG_CRASH_DUMP	1
-+#define CONFIG_VMCORE_INFO	1
-+#define CONFIG_KEXEC_CORE	1
- #include <linux/buildid.h>
- #include <linux/init.h>
- #include <linux/utsname.h>
+ int kimage_crash_copy_vmcoreinfo(struct kimage *image)
+ {
 @@ -423,6 +423,6 @@ void crash_save_cpu(struct pt_regs *regs, int cpu)
  	u32 *buf;
  
@@ -466,81 +480,37 @@
  
  #ifdef CONFIG_CRASH_HOTPLUG
  #undef pr_fmt
---- a/kernel/kexec_core.c
-+++ b/kernel/kexec_core.c
-@@ -12,6 +12,8 @@
- #include <linux/file.h>
- #include <linux/slab.h>
- #include <linux/fs.h>
-+
-+#define CONFIG_KEXEC_CORE	1
- #include <linux/kexec.h>
- #include <linux/mutex.h>
- #include <linux/list.h>
 --- a/kernel/panic.c
 +++ b/kernel/panic.c
 @@ -39,6 +39,10 @@
  #include <trace/events/error_report.h>
  #include <asm/sections.h>
  
-+#ifdef CONFIG_ARM64
++#ifdef CONFIG_MTK_ATF_MEMDUMP
 +#include <asm/memdump.h>
 +#endif
 +
  #define PANIC_TIMER_STEP 100
  #define PANIC_BLINK_SPD 18
  
-@@ -372,7 +376,11 @@ void panic(const char *fmt, ...)
+@@ -372,7 +376,8 @@ void panic(const char *fmt, ...)
  	if (!_crash_kexec_post_notifiers)
  		__crash_kexec(NULL);
  
-+#ifdef CONFIG_CRASH_DUMP
- 	panic_other_cpus_shutdown(_crash_kexec_post_notifiers);
-+#else
-+	panic_other_cpus_shutdown(true);
-+#endif
+-	panic_other_cpus_shutdown(_crash_kexec_post_notifiers);
++	panic_other_cpus_shutdown(IS_ENABLED(CONFIG_MTK_ATF_MEMDUMP) ||
++				  _crash_kexec_post_notifiers);
  
  	printk_legacy_allow_panic_sync();
  
-@@ -413,6 +421,10 @@ void panic(const char *fmt, ...)
+@@ -413,6 +418,10 @@ void panic(const char *fmt, ...)
  
  	panic_print_sys_info(true);
  
-+#ifdef CONFIG_ARM64
++#ifdef CONFIG_MTK_ATF_MEMDUMP
 +	arm64_atf_memory_dump(panic_timeout);
 +#endif
 +
  	if (!panic_blink)
  		panic_blink = no_blink;
  
---- a/kernel/printk/printk.c
-+++ b/kernel/printk/printk.c
-@@ -61,6 +61,8 @@
- #include "braille.h"
- #include "internal.h"
- 
-+#define CONFIG_VMCORE_INFO	1
-+
- int console_printk[4] = {
- 	CONSOLE_LOGLEVEL_DEFAULT,	/* console_loglevel */
- 	MESSAGE_LOGLEVEL_DEFAULT,	/* default_message_loglevel */
---- a/kernel/vmcore_info.c
-+++ b/kernel/vmcore_info.c
-@@ -4,6 +4,8 @@
-  * Copyright (C) 2002-2004 Eric Biederman  <ebiederm@xmission.com>
-  */
- 
-+#define CONFIG_VMCORE_INFO	1
-+#define CONFIG_KEXEC_CORE	1
- #include <linux/buildid.h>
- #include <linux/init.h>
- #include <linux/utsname.h>
---- a/lib/buildid.c
-+++ b/lib/buildid.c
-@@ -1,5 +1,6 @@
- // SPDX-License-Identifier: GPL-2.0
- 
-+#define CONFIG_VMCORE_INFO	1
- #include <linux/buildid.h>
- #include <linux/cache.h>
- #include <linux/elf.h>

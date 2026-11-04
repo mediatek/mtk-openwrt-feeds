@@ -14,27 +14,10 @@ index 742cd78..db058fd 100644
  	bool "Enable support for unsecure and obsolete WEP"
  	depends on PACKAGE_hostapd-common
 diff --git a/package/network/services/hostapd/Makefile b/package/network/services/hostapd/Makefile
-index 8152497..e440573 100644
+index 8152497..467280a 100644
 --- a/package/network/services/hostapd/Makefile
 +++ b/package/network/services/hostapd/Makefile
-@@ -7,11 +7,12 @@ include $(TOPDIR)/rules.mk
- PKG_NAME:=hostapd
- PKG_RELEASE:=6
- 
--PKG_SOURCE_URL:=https://w1.fi/hostap.git
-+PKG_SOURCE_URL:=https://github.com/mediatek/softmac_hostapd
- PKG_SOURCE_PROTO:=git
--PKG_SOURCE_DATE:=2025-08-26
--PKG_SOURCE_VERSION:=ca266cc24d8705eb1a2a0857ad326e48b1408b20
--PKG_MIRROR_HASH:=59ac677093f524ff98588abd9f33805a336a6e929d6814222f0d784c854f2343
-+PKG_SOURCE_VERSION:=mp4.3-6.12
-+PKG_MIRROR_HASH:=skip
-+
-+PKG_VERSION:=4.3.6.12
- 
- PKG_MAINTAINER:=Felix Fietkau <nbd@nbd.name>
- PKG_LICENSE:=BSD-3-Clause
-@@ -28,6 +29,7 @@ PKG_CONFIG_DEPENDS:= \
+@@ -28,6 +28,7 @@ PKG_CONFIG_DEPENDS:= \
  	CONFIG_DRIVER_11AC_SUPPORT \
  	CONFIG_DRIVER_11AX_SUPPORT \
  	CONFIG_DRIVER_11BE_SUPPORT \
@@ -42,7 +25,7 @@ index 8152497..e440573 100644
  	CONFIG_WPA_ENABLE_WEP
  
  PKG_BUILD_FLAGS:=gc-sections lto
-@@ -46,8 +48,9 @@ LOCAL_TYPE=$(strip \
+@@ -46,8 +47,9 @@ LOCAL_TYPE=$(strip \
  LOCAL_AND_LIB_VARIANT=$(patsubst hostapd-%,%,\
  		      $(patsubst wpad-%,%,\
  		      $(patsubst supplicant-%,%,\
@@ -53,7 +36,7 @@ index 8152497..e440573 100644
  
  LOCAL_VARIANT=$(patsubst %-internal,%,\
  	      $(patsubst %-openssl,%,\
-@@ -86,22 +89,29 @@ ifneq ($(LOCAL_VARIANT),mini)
+@@ -86,22 +88,30 @@ ifneq ($(LOCAL_VARIANT),mini)
    ifneq ($(CONFIG_DRIVER_11BE_SUPPORT),)
      HOSTAPD_IEEE80211BE:=y
    endif
@@ -84,6 +67,7 @@ index 8152497..e440573 100644
 +	CONFIG_DPP=y CONFIG_DPP2=y CONFIG_DPP3=y \
 +	CONFIG_HS20=y CONFIG_P2P_MANAGER=y \
 +	CONFIG_HE_OVERRIDES=y CONFIG_EHT_OVERRIDES=y CONFIG_DEBUG_FILE=y \
++	CONFIG_ENC_ASSOC=y CONFIG_PMKSA_PRIVACY=y \
  	$(if $(HOSTAPD_IEEE80211BE),CONFIG_OCV=y)
  
  

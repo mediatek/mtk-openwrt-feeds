@@ -1,0 +1,21 @@
+diff --git a/package/network/utils/iw/Makefile b/package/network/utils/iw/Makefile
+index e75e8d1..0452fdd 100644
+--- a/package/network/utils/iw/Makefile
++++ b/package/network/utils/iw/Makefile
+@@ -10,10 +10,12 @@ include $(TOPDIR)/rules.mk
+ PKG_NAME:=iw
+ PKG_VERSION:=6.17
+ PKG_RELEASE:=1
+- 
+-PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.xz
+-PKG_SOURCE_URL:=@KERNEL/software/network/iw
+-PKG_HASH:=7d182e498289ab39b257da6780d562e415377107f50358ee5b55b8cfe40b1e33
++
++PKG_SOURCE_URL:=https://github.com/mediatek/softmac_iw
++PKG_SOURCE_PROTO:=git
++PKG_SOURCE_VERSION:=mp4.3-6.12
++PKG_SOURCE_HASH:=skip
++PKG_VERSION:=4.3.6.12
+ 
+ PKG_MAINTAINER:=Felix Fietkau <nbd@nbd.name>
+ PKG_LICENSE:=GPL-2.0

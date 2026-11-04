@@ -1,0 +1,22 @@
+diff --git a/package/network/config/wifi-scripts/Makefile b/package/network/config/wifi-scripts/Makefile
+index bba731e..4712448 100644
+--- a/package/network/config/wifi-scripts/Makefile
++++ b/package/network/config/wifi-scripts/Makefile
+@@ -8,10 +8,16 @@
+ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=wifi-scripts
+-PKG_VERSION:=1.0
+ PKG_RELEASE:=1
+ PKG_LICENSE:=GPL-2.0
+ 
++PKG_SOURCE_URL:=https://github.com/mediatek/softmac_wifi-scripts
++PKG_SOURCE_PROTO:=git
++PKG_SOURCE_VERSION:=mp4.3-6.12
++PKG_SOURCE_HASH:=skip
++PKG_VERSION:=4.3.6.12
++PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(PKG_VERSION)
++
+ PKG_MAINTAINER:=Felix Fietkau <nbd@nbd.name>
+ PKG_CONFIG_DEPENDS:=CONFIG_WIFI_SCRIPTS_UCODE
+ 

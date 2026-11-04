@@ -241,11 +241,11 @@
 +	cpu = smp_processor_id();
 +	crash_save_cpu(&fixed_regs, cpu);
 +
-+	mdump_core_info->panic_regs_valid = true;
-+
 +	memcpy(saved_regs, &fixed_regs, sizeof(fixed_regs));
 +
 +	dcache_clean_inval_poc((unsigned long)saved_regs, (unsigned long)saved_regs + sizeof(*regs));
++
++	mdump_core_info->panic_regs_valid = true;
 +
 +	arm64_atf_memory_dump_save_cpu_regs(&fixed_regs, cpu);
 +	this_cpu_write(mdump_panic_info_saved, true);
@@ -255,7 +255,7 @@
 +{
 +	struct pt_regs *saved_regs;
 +
-+	if (!mdump_panic_regs)
++	if (!regs || !mdump_panic_regs || cpu >= NR_CPUS)
 +		return;
 +
 +	saved_regs = per_cpu_ptr(&mdump_cpu_regs, cpu);

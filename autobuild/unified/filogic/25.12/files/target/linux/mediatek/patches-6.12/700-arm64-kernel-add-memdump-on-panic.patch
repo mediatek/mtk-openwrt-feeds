@@ -39,7 +39,7 @@
  subdir- += vdso vdso32
 --- a/arch/arm64/kernel/memdump.c
 +++ b/arch/arm64/kernel/memdump.c
-@@ -0,0 +1,310 @@
+@@ -0,0 +1,315 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2026 MediaTek Inc.
@@ -129,7 +129,7 @@
 +			pr_warn("Memory range in dump is truncated\n");
 +			warn_max_range = true;
 +		}
-+		return 0;
++		return -ENOSPC;
 +	}
 +
 +	cmem->ranges[cmem->nr_ranges].va_start = (u64)__va(res->start);
@@ -142,12 +142,13 @@
 +
 +static DEFINE_PER_CPU_SHARED_ALIGNED(struct pt_regs, mdump_cpu_regs);
 +
-+static void prepare_mdump_core_info(void)
++static int prepare_mdump_core_info(void)
 +{
 +	struct memdump_mem_range *mem_ranges;
 +	struct crash_mem_priv cmpriv;
 +	size_t len, used_size;
 +	uintptr_t *note_buf;
++	int ret;
 +	u32 cpu;
 +
 +	mdump_core_info->ver = MEMDUMP_CORE_VER;
@@ -188,7 +189,10 @@
 +	cmpriv.nr_ranges = 0;
 +	cmpriv.ranges = mem_ranges;
 +
-+	walk_system_ram_res(0, -1, &cmpriv, log_ram_headers_callback);
++	ret = walk_system_ram_res(0, -1, &cmpriv,
++				  log_ram_headers_callback);
++	if (ret)
++		return ret;
 +
 +	mdump_core_info->nr_mem_ranges = cmpriv.nr_ranges;
 +
@@ -212,6 +216,8 @@
 +	mdump_core_info->crc = crc32(0xffffffff, mdump_core_info, len) ^ 0xffffffff;
 +
 +	dcache_clean_inval_poc((unsigned long)mdump_core_info, (unsigned long)mdump_core_info + len);
++
++	return 0;
 +}
 +
 +void arm64_atf_memory_dump(int reboot_timeout)
@@ -221,8 +227,7 @@
 +
 +	if (!mdump_core_info || !mdump_panic_regs) {
 +		pr_err("Memory dump core info not available\n");
-+	} else {
-+		prepare_mdump_core_info();
++	} else if (!prepare_mdump_core_info()) {
 +		core_pa = __pa(mdump_core_info);
 +	}
 +

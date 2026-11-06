@@ -235,7 +235,7 @@ void mtk_gdm_pl_end_page_error(struct mtk_eth *eth, int id)
 	if (id < 0 || id > 2)
 		return;
 
-	pr_info("====================================================");
+	pr_info("====================================================\n");
 	pr_info("GDM%d FS_PL_END_MISMATCH_LGC_INFO_LSB      = %08x\n", id + 1,
 		mtk_gdm_dbg_out(eth, FE_GDM_DBG_CTRL(id), GDM_DBG_IDX_MASK,
 				FIELD_PREP(GDM_DBG_IDX_MASK,
@@ -272,7 +272,7 @@ void mtk_gdm_pl_end_page_error(struct mtk_eth *eth, int id)
 		mtk_gdm_dbg_out(eth, FE_GDM_DBG_CTRL(id), GDM_DBG_IDX_MASK,
 				FIELD_PREP(GDM_DBG_IDX_MASK,
 					   FS_PL_END_MISMATCH_LINK_LIST_INDEX)));
-	pr_info("====================================================");
+	pr_info("====================================================\n");
 }
 
 void mtk_cdm_v2_pl_end_page_error(struct mtk_eth *eth, int id)
@@ -292,7 +292,7 @@ void mtk_cdm_v2_pl_end_page_error(struct mtk_eth *eth, int id)
 	if (id < 0 || id > 2)
 		return;
 
-	pr_info("====================================================");
+	pr_info("====================================================\n");
 	pr_info("CDM%d FS_PL_END_MISMATCH_LGC_INFO_LSB      = %08x\n", id + 1,
 		mtk_gdm_dbg_out(eth, FE_CDM_DBG_CTRL(id), CDM_DBG_IDX_MASK,
 				FIELD_PREP(CDM_DBG_IDX_MASK,
@@ -329,7 +329,7 @@ void mtk_cdm_v2_pl_end_page_error(struct mtk_eth *eth, int id)
 		mtk_gdm_dbg_out(eth, FE_CDM_DBG_CTRL(id), CDM_DBG_IDX_MASK,
 				FIELD_PREP(CDM_DBG_IDX_MASK,
 					   FS_PL_END_MISMATCH_LINK_LIST_INDEX)));
-	pr_info("====================================================");
+	pr_info("====================================================\n");
 }
 
 void mtk_cdm_v3_pl_end_page_error(struct mtk_eth *eth, int id)
@@ -349,7 +349,7 @@ void mtk_cdm_v3_pl_end_page_error(struct mtk_eth *eth, int id)
 	if (id < 2 || id > 8)
 		return;
 
-	pr_info("====================================================");
+	pr_info("====================================================\n");
 	pr_info("CDM%d FS_PL_END_MISMATCH_LGC_INFO_LSB      = %08x\n", id + 1,
 		mtk_gdm_dbg_out(eth, FE_CDM_DBG_CTRL(id), CDM_DBG_IDX_MASK,
 				FIELD_PREP(CDM_DBG_IDX_MASK,
@@ -386,7 +386,7 @@ void mtk_cdm_v3_pl_end_page_error(struct mtk_eth *eth, int id)
 		mtk_gdm_dbg_out(eth, FE_CDM_DBG_CTRL(id), CDM_DBG_IDX_MASK,
 				FIELD_PREP(CDM_DBG_IDX_MASK,
 					   FS_PL_END_MISMATCH_LINK_LIST_INDEX)));
-	pr_info("====================================================");
+	pr_info("====================================================\n");
 }
 
 irqreturn_t mtk_handle_fe_irq(int irq, void *_eth)
@@ -419,10 +419,10 @@ irqreturn_t mtk_handle_fe_irq(int irq, void *_eth)
 		status = mtk_r32(eth, MTK_FE_PINFO_INT_STATUS);
 		for (i = 0; i < 3; i++) {
 			if (status & MTK_GDM_L3LEN_OVER_RUN(i))
-				pr_warn("[%s] Detect GDM%d L3 length over run !",
+				pr_warn("[%s] Detect GDM%d L3 length over run !\n",
 					__func__, i + 1);
 			if (status & MTK_GDM_PL_END_ERR(i)) {
-				pr_warn("[%s] Detect GDM%d packet end page error !",
+				pr_warn("[%s] Detect GDM%d packet end page error !\n",
 					__func__, i + 1);
 				mtk_gdm_pl_end_page_error(eth, i);
 				pl_end_error = true;
@@ -430,10 +430,10 @@ irqreturn_t mtk_handle_fe_irq(int irq, void *_eth)
 		}
 		for (i = 0; i < 9; i++) {
 			if (status & MTK_CDM_L3LEN_OVER_RUN(i))
-				pr_warn("[%s] Detect CDM%d L3 length over run !",
+				pr_warn("[%s] Detect CDM%d L3 length over run !\n",
 					__func__, i + 1);
 			if (status & MTK_CDM_PL_END_ERR(i)) {
-				pr_warn("[%s] Detect CDM%d packet end page error !",
+				pr_warn("[%s] Detect CDM%d packet end page error !\n",
 					__func__, i + 1);
 				if (i >= 2)
 					mtk_cdm_v3_pl_end_page_error(eth, i);
@@ -448,15 +448,15 @@ irqreturn_t mtk_handle_fe_irq(int irq, void *_eth)
 		status = mtk_r32(eth, FE_CGDM_INT3);
 		for (i = 0; i < 3; i++) {
 			if (status & FE_GDM_PAGE_MISMATCH(i))
-				pr_warn("[%s] Detect GDM%d page number mismatch !",
+				pr_warn("[%s] Detect GDM%d page number mismatch !\n",
 					__func__, i + 1);
 		}
 		for (i = 0; i < 9; i++) {
 			if (status & FE_CDM_PAGE_MISMATCH(i))
-				pr_warn("[%s] Detect CDM%d page number mismatch !",
+				pr_warn("[%s] Detect CDM%d page number mismatch !\n",
 					__func__, i + 1);
 			if (status & FE_CDM_RUNT_PACKET(i))
-				pr_warn("[%s] Detect CDM%d runt packet error !",
+				pr_warn("[%s] Detect CDM%d runt packet error !\n",
 					__func__, i + 1);
 		}
 		mtk_w32(eth, status, FE_CGDM_INT3);
@@ -464,7 +464,7 @@ irqreturn_t mtk_handle_fe_irq(int irq, void *_eth)
 		if (pl_end_error) {
 			if (!test_bit(MTK_RESETTING, &eth->state)) {
 				/* disable GDM and GDM packet end page error interrupt */
-				mtk_w32(eth, 0x0000ffff, MTK_FE_PINFO_INT_ENABLE);
+				mtk_w32(eth, 0x00000fff, MTK_FE_PINFO_INT_ENABLE);
 				/* trigger an SER to let PSE go back to work normally */
 				atomic_inc(&force);
 				schedule_work(&eth->pending_work);

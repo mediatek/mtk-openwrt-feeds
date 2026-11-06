@@ -21,7 +21,7 @@
  
 --- a/arch/arm64/include/asm/memdump.h
 +++ b/arch/arm64/include/asm/memdump.h
-@@ -0,0 +1,17 @@
+@@ -0,0 +1,18 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +/*
 + * Copyright (C) 2025 MediaTek Inc.
@@ -37,6 +37,7 @@
 +void arm64_atf_memory_dump(int reboot_timeout);
 +void arm64_atf_memory_dump_save_info(struct pt_regs *regs);
 +void arm64_atf_memory_dump_save_cpu_regs(struct pt_regs *regs, unsigned int cpu);
++void arm64_atf_memory_dump_clean_cache(void);
 +
 +#endif /* _ARM64_MEMDUMP_H_ */
 --- a/arch/arm64/kernel/Makefile
@@ -51,7 +52,7 @@
  subdir- += vdso vdso32
 --- a/arch/arm64/kernel/memdump.c
 +++ b/arch/arm64/kernel/memdump.c
-@@ -0,0 +1,336 @@
+@@ -0,0 +1,392 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2026 MediaTek Inc.
@@ -72,6 +73,8 @@
 +#include <linux/percpu.h>
 +#include <asm/kexec.h>
 +#include <asm/cacheflush.h>
++#include <asm/barrier.h>
++#include <asm/cache.h>
 +
 +#include <asm/memdump.h>
 +
@@ -297,6 +300,60 @@
 +			       (unsigned long)(saved_regs + 1));
 +}
 +
++void arm64_atf_memory_dump_clean_cache(void)
++{
++	u64 clidr = read_sysreg(clidr_el1);
++	u64 csselr = read_sysreg(csselr_el1);
++	u64 mmfr2 = read_cpuid(ID_AA64MMFR2_EL1);
++	bool ccidx;
++	unsigned int level;
++
++	ccidx = ((mmfr2 >> ID_AA64MMFR2_EL1_CCIDX_SHIFT) & 0xf) != 0;
++
++	dsb(sy);
++
++	for (level = 0; level < CLIDR_LOC(clidr); level++) {
++		u64 ccsidr, num_sets, num_ways;
++		unsigned int ctype, line_shift, way_shift = 0;
++		u64 set, way;
++
++		ctype = CLIDR_CTYPE(clidr, level + 1);
++		if (ctype != 2 && ctype != 3 && ctype != 4)
++			continue;
++
++		write_sysreg(level << 1, csselr_el1);
++		isb();
++		ccsidr = read_sysreg(ccsidr_el1);
++
++		line_shift = (ccsidr & 0x7) + 4;
++		if (ccidx) {
++			num_sets = ((ccsidr >> 32) & GENMASK_ULL(23, 0)) + 1;
++			num_ways = ((ccsidr >> 3) & GENMASK_ULL(20, 0)) + 1;
++		} else {
++			num_sets = ((ccsidr >> 13) & GENMASK_ULL(14, 0)) + 1;
++			num_ways = ((ccsidr >> 3) & GENMASK_ULL(9, 0)) + 1;
++		}
++
++		if (num_ways > 1)
++			way_shift = __builtin_clz((unsigned int)(num_ways - 1));
++
++		for (way = 0; way < num_ways; way++) {
++			for (set = 0; set < num_sets; set++) {
++				u64 setway = (level << 1) |
++					     (set << line_shift);
++
++				if (num_ways > 1)
++					setway |= way << way_shift;
++				asm volatile("dc csw, %0" : : "r" (setway));
++			}
++		}
++		dsb(sy);
++	}
++
++	write_sysreg(csselr, csselr_el1);
++	isb();
++}
++
 +static void *__init alloc_zero_pages(size_t size, u32 *retorder)
 +{
 +	struct page *page;
@@ -401,12 +458,13 @@
  /*
   * as from 2.5, kernels no longer have an init_tasks structure
   * so we need some other way of telling a new secondary core
-@@ -903,6 +907,10 @@ static void __noreturn ipi_cpu_crash_sto
+@@ -903,6 +907,11 @@ static void __noreturn ipi_cpu_crash_sto
  
  	crash_save_cpu(regs, cpu);
  
 +#ifdef CONFIG_MTK_ATF_MEMDUMP
 +	arm64_atf_memory_dump_save_cpu_regs(regs, cpu);
++	arm64_atf_memory_dump_clean_cache();
 +#endif
 +
  	set_cpu_online(cpu, false);

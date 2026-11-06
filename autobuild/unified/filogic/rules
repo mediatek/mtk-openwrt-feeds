@@ -62,6 +62,8 @@ filogic_change_kernel_config() {
 
 	# Memory dump support
 	kernel_config_enable CONFIG_MTK_ATF_MEMDUMP
+	kernel_config_enable CONFIG_ARM64_PSEUDO_NMI
+	kernel_config_disable CONFIG_ARM64_DEBUG_PRIORITY_MASKING
 	kernel_config_disable CONFIG_CRASH_DUMP
 
 	# APSoC related configs

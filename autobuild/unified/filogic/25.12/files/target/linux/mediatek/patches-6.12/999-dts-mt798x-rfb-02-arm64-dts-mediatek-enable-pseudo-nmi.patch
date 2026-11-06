@@ -1,0 +1,181 @@
+---
+arm64: dts: mediatek: enable pseudo-NMI for filogic
+
+Enable GICv3 pseudo-NMI support for the devices selected by the unified
+build and all MediaTek filogic RFBs. This allows the crash-stop NMI
+fallback to interrupt CPUs which do not respond to the initial regular IPI.
+---
+
+--- a/arch/arm64/boot/dts/mediatek/mt7981-rfb.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7981-rfb.dts
+@@ -18,7 +18,7 @@
+ 
+ 	chosen: chosen {
+ 		stdout-path = "serial0:115200n8";
+-		bootargs-append = " root=/dev/fit0 rootwait";
++		bootargs-append = " irqchip.gicv3_pseudo_nmi=1 root=/dev/fit0 rootwait";
+ 	};
+ 
+ 	memory@40000000 {
+--- a/arch/arm64/boot/dts/mediatek/mt7981-rfb-spim-nand.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7981-rfb-spim-nand.dtso
+@@ -8,7 +8,7 @@
+ 	fragment@0 {
+ 		target = <&chosen>;
+ 		rootdisk-spim-nand = <&ubi_root>;
+-		bootargs-append = " ubi.block=0,firmware root=/dev/fit0 rootwait";
++		bootargs-append = " irqchip.gicv3_pseudo_nmi=1 ubi.block=0,firmware root=/dev/fit0 rootwait";
+ 	};
+ 
+ 	fragment@1 {
+--- a/arch/arm64/boot/dts/mediatek/mt7981-rfb-spim-nand-nmbm.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7981-rfb-spim-nand-nmbm.dtso
+@@ -9,7 +9,7 @@
+ 
+ &{/chosen} {
+ 	rootdisk-spim-nand = <&ubi_rootfs>;
+-	bootargs-append = " ubi.block=0,firmware root=/dev/fit0 rootwait";
++	bootargs-append = " irqchip.gicv3_pseudo_nmi=1 ubi.block=0,firmware root=/dev/fit0 rootwait";
+ };
+ 
+ &{/soc/spi@1100a000} {
+--- a/arch/arm64/boot/dts/mediatek/mt7986a-rfb.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7986a-rfb.dts
+@@ -20,7 +20,7 @@
+ 
+ 	chosen: chosen {
+ 		stdout-path = "serial0:115200n8";
+-		bootargs-append = " root=/dev/fit0 rootwait";
++		bootargs-append = " irqchip.gicv3_pseudo_nmi=1 root=/dev/fit0 rootwait";
+ 	};
+ 
+ 	gpio-keys {
+--- a/arch/arm64/boot/dts/mediatek/mt7986b-rfb.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7986b-rfb.dts
+@@ -18,6 +18,7 @@
+ 
+ 	chosen {
+ 		stdout-path = "serial0:115200n8";
++		bootargs-append = " irqchip.gicv3_pseudo_nmi=1";
+ 	};
+ 
+ 	gpio-keys {
+--- a/arch/arm64/boot/dts/mediatek/mt7986-spim-nand.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7986-spim-nand.dtso
+@@ -9,7 +9,7 @@
+ 
+ &{/chosen} {
+ 	rootdisk-spim-nand = <&ubi_root>;
+-	bootargs-append = " ubi.block=0,firmware root=/dev/fit0 rootwait";
++	bootargs-append = " irqchip.gicv3_pseudo_nmi=1 ubi.block=0,firmware root=/dev/fit0 rootwait";
+ };
+ 
+ &{/soc/spi@1100a000} {
+--- a/arch/arm64/boot/dts/mediatek/mt7986-spim-nand-nmbm.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7986-spim-nand-nmbm.dtso
+@@ -9,7 +9,7 @@
+ 
+ &{/chosen} {
+ 	rootdisk-spim-nand = <&ubi_rootfs>;
+-	bootargs-append = " ubi.block=0,firmware root=/dev/fit0 rootwait";
++	bootargs-append = " irqchip.gicv3_pseudo_nmi=1 ubi.block=0,firmware root=/dev/fit0 rootwait";
+ };
+ 
+ &{/soc/spi@1100a000} {
+--- a/arch/arm64/boot/dts/mediatek/mt7986-spim-nor.dtso
++++ b/arch/arm64/boot/dts/mediatek/mt7986-spim-nor.dtso
+@@ -47,5 +47,5 @@
+ 
+ &{/chosen} {
+ 	rootdisk-nor = <&nor_rootfs>;
+-	bootargs-append = " root=/dev/fit0 rootwait";
++	bootargs-append = " irqchip.gicv3_pseudo_nmi=1 root=/dev/fit0 rootwait";
+ };
+\ No newline at end of file
+--- a/arch/arm64/boot/dts/mediatek/mt7987a-bananapi-bpi-r4-lite.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7987a-bananapi-bpi-r4-lite.dts
+@@ -26,7 +26,7 @@
+ 	};
+ 
+ 	chosen {
+-		bootargs = "console=ttyS0,115200n1 \
++		bootargs = "irqchip.gicv3_pseudo_nmi=1 console=ttyS0,115200n1 \
+ 			    earlycon=uart8250,mmio32,0x11000000 \
+ 			    pci=pcie_bus_perf ubi.block=0,firmware \
+ 			    root=/dev/fit0 rootwait";
+--- a/arch/arm64/boot/dts/mediatek/mt7987a-bananapi-bpi-r4-mini.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7987a-bananapi-bpi-r4-mini.dts
+@@ -15,7 +15,7 @@
+ 	compatible = "mediatek,mt7987a", "bananapi,bpi-r4-mini";
+ 
+ 	chosen {
+-		bootargs = "console=ttyS0,115200n1 \
++		bootargs = "irqchip.gicv3_pseudo_nmi=1 console=ttyS0,115200n1 \
+ 			    earlycon=uart8250,mmio32,0x11000000 \
+ 			    pci=pcie_bus_perf ubi.block=0,firmware \
+ 			    root=/dev/fit0 rootwait";
+--- a/arch/arm64/boot/dts/mediatek/mt7987a-rfb.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7987a-rfb.dts
+@@ -14,7 +14,7 @@
+ 	compatible = "mediatek,mt7987a", "mediatek,mt7987";
+ 
+ 	chosen {
+-		bootargs = "console=ttyS0,115200n1 \
++		bootargs = "irqchip.gicv3_pseudo_nmi=1 console=ttyS0,115200n1 \
+ 			    earlycon=uart8250,mmio32,0x11000000 \
+ 			    pci=pcie_bus_perf ubi.block=0,firmware \
+ 			    root=/dev/fit0 rootwait";
+--- a/arch/arm64/boot/dts/mediatek/mt7988a-bananapi-bpi-r4-pro.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-bananapi-bpi-r4-pro.dts
+@@ -53,7 +53,7 @@
+ 
+ 	chosen {
+ 		stdout-path = &serial0;
+-		bootargs = "console=ttyS0,115200n1 \
++		bootargs = "irqchip.gicv3_pseudo_nmi=1 console=ttyS0,115200n1 \
+ 			    earlycon=uart8250,mmio32,0x11000000 \
+ 			    pci=pcie_bus_perf ubi.block=0,firmware root=/dev/fit0 \
+ 			    rootwait";
+--- a/arch/arm64/boot/dts/mediatek/mt7988a-bananapi-bpi-r4.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-bananapi-bpi-r4.dtsi
+@@ -11,7 +11,7 @@
+ 
+ / {
+ 	chosen {
+-		bootargs = "console=ttyS0,115200n1 \
++		bootargs = "irqchip.gicv3_pseudo_nmi=1 console=ttyS0,115200n1 \
+ 			    earlycon=uart8250,mmio32,0x11000000 \
+ 			    pci=pcie_bus_perf ubi.block=0,firmware root=/dev/fit0 \
+ 			    rootwait";
+--- a/arch/arm64/boot/dts/mediatek/mt7988a-rfb.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7988a-rfb.dts
+@@ -17,7 +17,7 @@
+ 		     "mediatek,mt7988a";
+ 
+ 	chosen {
+-		bootargs = "console=ttyS0,115200n1 \
++		bootargs = "irqchip.gicv3_pseudo_nmi=1 console=ttyS0,115200n1 \
+ 			    earlycon=uart8250,mmio32,0x11000000 \
+ 			    pci=pcie_bus_perf ubi.block=0,firmware root=/dev/fit0 \
+ 			    rootwait";
+--- a/arch/arm64/boot/dts/mediatek/mt7988d-rfb.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7988d-rfb.dts
+@@ -16,7 +16,7 @@
+ 		     "mediatek,mt7988";
+ 
+ 	chosen {
+-		bootargs = "console=ttyS0,115200n1 \
++		bootargs = "irqchip.gicv3_pseudo_nmi=1 console=ttyS0,115200n1 \
+ 			    earlycon=uart8250,mmio32,0x11000000 \
+ 			    pci=pcie_bus_perf ubi.block=0,firmware root=/dev/fit0 \
+ 			    rootwait";
+--- a/arch/arm64/boot/dts/mediatek/mt7986b-rfb-dsa-dual-cpu-port.dts
++++ b/arch/arm64/boot/dts/mediatek/mt7986b-rfb-dsa-dual-cpu-port.dts
+@@ -18,6 +18,7 @@
+ 
+ 	chosen {
+ 		stdout-path = "serial0:115200n8";
++		bootargs-append = " irqchip.gicv3_pseudo_nmi=1";
+ 	};
+ 
+ 	gpio-keys {

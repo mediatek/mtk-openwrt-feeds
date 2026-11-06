@@ -1,0 +1,27 @@
+mediatek: filogic: enable pseudo-NMI for local MT7987 RFB and BPI
+
+Add the pseudo-NMI command-line option to the local MT7987 RFB and BPI
+device trees.
+
+--- a/target/linux/mediatek/dts/mt7987a-rfb.dts
++++ b/target/linux/mediatek/dts/mt7987a-rfb.dts
+@@ -14,7 +14,7 @@
+ 	compatible = "mediatek,mt7987a", "mediatek,mt7987";
+ 
+ 	chosen {
+-		bootargs = "console=ttyS0,115200n1 loglevel=6  \
++		bootargs = "irqchip.gicv3_pseudo_nmi=1 console=ttyS0,115200n1 loglevel=6  \
+ 			    earlycon=uart8250,mmio32,0x11000000 \
+ 			    pci=pcie_bus_perf ubi.block=0,firmware \
+ 			    root=/dev/fit0 rootwait";
+--- a/target/linux/mediatek/dts/mt7987a-bananapi-bpi-r4-lite.dts
++++ b/target/linux/mediatek/dts/mt7987a-bananapi-bpi-r4-lite.dts
+@@ -26,7 +26,7 @@
+ 	};
+ 
+ 	chosen {
+-		bootargs = "console=ttyS0,115200n1 loglevel=6  \
++		bootargs = "irqchip.gicv3_pseudo_nmi=1 console=ttyS0,115200n1 loglevel=6  \
+ 			    earlycon=uart8250,mmio32,0x11000000 \
+ 			    pci=pcie_bus_perf ubi.block=0,firmware \
+ 			    root=/dev/fit0 rootwait";

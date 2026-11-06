@@ -26,6 +26,8 @@
 #define MDC_SIP "local_ip"
 #define MDC_DIP "dest_ip"
 #define MDC_NETMASK "netmask"
+#define MDC_EARLY_DUMP "early_dump"
+#define MDC_DEFAULT_DUMP "default_dump"
 
 #define MTK_SIP_EMERG_MEM_DUMP_CFG		0xC2000541
 #define MDUMP_CFG_LOCAL_IP			0
@@ -38,6 +40,16 @@ static struct proc_dir_entry *mdc_dip_entry;
 static struct proc_dir_entry *mdc_netmask_entry;
 
 #ifdef MDC_HAS_PANIC_CONTROLS
+struct mdc_dump_control {
+	const char *name;
+	enum mtk_memdump_dump_position position;
+};
+
+static const struct mdc_dump_control mdc_dump_controls[] = {
+	{ MDC_EARLY_DUMP, MTK_MEMDUMP_DUMP_EARLY },
+	{ MDC_DEFAULT_DUMP, MTK_MEMDUMP_DUMP_DEFAULT },
+};
+
 struct mdc_panic_control {
 	const char *name;
 	enum mtk_memdump_panic_type type;
@@ -293,6 +305,86 @@ static const struct file_operations mdc_netmask_fops = {
 #endif
 
 #ifdef MDC_HAS_PANIC_CONTROLS
+static int mdc_dump_display(struct seq_file *seq, void *v)
+{
+	enum mtk_memdump_dump_position position = (uintptr_t)seq->private;
+
+	seq_printf(seq, "%d\n", mtk_memdump_get_dump_enabled(position));
+	return 0;
+}
+
+static int mdc_dump_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, mdc_dump_display, pde_data(inode));
+}
+
+static ssize_t mdc_dump_write(struct file *file,
+			      const char __user *buffer, size_t count,
+			      loff_t *pos)
+{
+	struct seq_file *seq = file->private_data;
+	enum mtk_memdump_dump_position position = (uintptr_t)seq->private;
+	char input[2];
+	bool enabled;
+	int ret;
+
+	if (*pos)
+		return -ENOTSUPP;
+
+	if (!count || count > sizeof(input))
+		return -EINVAL;
+
+	if (copy_from_user(input, buffer, count))
+		return -EFAULT;
+
+	if (input[0] != '0' && input[0] != '1')
+		return -EINVAL;
+
+	if (count == sizeof(input) && input[1] != '\n')
+		return -EINVAL;
+
+	enabled = input[0] == '1';
+	ret = mtk_memdump_set_dump_enabled(position, enabled);
+	if (ret)
+		return ret;
+
+	return count;
+}
+
+#if KERNEL_VERSION(5, 6, 0) <= LINUX_VERSION_CODE
+static const struct proc_ops mdc_dump_fops = {
+	.proc_open = mdc_dump_open,
+	.proc_read = seq_read,
+	.proc_write = mdc_dump_write,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
+};
+#else
+static const struct file_operations mdc_dump_fops = {
+	.open = mdc_dump_open,
+	.read = seq_read,
+	.write = mdc_dump_write,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+#endif
+
+static int mdc_create_dump_controls(void)
+{
+	const struct mdc_dump_control *control;
+	size_t i;
+
+	for (i = 0; i < ARRAY_SIZE(mdc_dump_controls); i++) {
+		control = &mdc_dump_controls[i];
+		if (!proc_create_data(control->name, 0644, mdc_entry,
+				      &mdc_dump_fops,
+				      (void *)(uintptr_t)control->position))
+			return -ENOMEM;
+	}
+
+	return 0;
+}
+
 static int mdc_panic_display(struct seq_file *seq, void *v)
 {
 	enum mtk_memdump_panic_type type = (uintptr_t)seq->private;
@@ -408,6 +500,13 @@ static int __init mdc_init(void)
 	}
 
 #ifdef MDC_HAS_PANIC_CONTROLS
+	ret = mdc_create_dump_controls();
+	if (ret) {
+		pr_err("failed to create memdump position control entries");
+		proc_remove(mdc_entry);
+		return ret;
+	}
+
 	ret = mdc_create_panic_controls();
 	if (ret) {
 		pr_err("failed to create memdump panic control entries");

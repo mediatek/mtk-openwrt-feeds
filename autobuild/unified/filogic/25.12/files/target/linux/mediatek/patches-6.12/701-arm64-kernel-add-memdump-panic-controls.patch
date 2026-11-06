@@ -1,6 +1,6 @@
 --- a/include/linux/mtk_memdump.h
 +++ b/include/linux/mtk_memdump.h
-@@ -0,0 +1,64 @@
+@@ -0,0 +1,86 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef _LINUX_MTK_MEMDUMP_H
 +#define _LINUX_MTK_MEMDUMP_H
@@ -21,7 +21,16 @@
 +	MTK_MEMDUMP_PANIC_MAX,
 +};
 +
++enum mtk_memdump_dump_position {
++	MTK_MEMDUMP_DUMP_EARLY,
++	MTK_MEMDUMP_DUMP_DEFAULT,
++	MTK_MEMDUMP_DUMP_POSITION_MAX,
++};
++
 +#ifdef CONFIG_MTK_ATF_MEMDUMP
++int mtk_memdump_set_dump_enabled(enum mtk_memdump_dump_position position,
++				  bool enabled);
++bool mtk_memdump_get_dump_enabled(enum mtk_memdump_dump_position position);
 +int mtk_memdump_set_panic_enabled(enum mtk_memdump_panic_type type,
 +				  bool enabled);
 +bool mtk_memdump_get_panic_enabled(enum mtk_memdump_panic_type type);
@@ -31,6 +40,19 @@
 +bool mtk_memdump_panic_triggered(void);
 +struct pt_regs *mtk_memdump_get_panic_regs(void);
 +#else
++static inline int
++mtk_memdump_set_dump_enabled(enum mtk_memdump_dump_position position,
++			     bool enabled)
++{
++	return -EOPNOTSUPP;
++}
++
++static inline bool
++mtk_memdump_get_dump_enabled(enum mtk_memdump_dump_position position)
++{
++	return false;
++}
++
 +static inline int
 +mtk_memdump_set_panic_enabled(enum mtk_memdump_panic_type type, bool enabled)
 +{
@@ -65,6 +87,25 @@
 +#endif
 +
 +#endif /* _LINUX_MTK_MEMDUMP_H */
+--- a/arch/arm64/include/asm/memdump.h
++++ b/arch/arm64/include/asm/memdump.h
+@@ -10,7 +10,15 @@
+ 
+ struct pt_regs;
+ 
+-void arm64_atf_memory_dump(int reboot_timeout);
++enum arm64_atf_memdump_end_action {
++	ARM64_ATF_MEMDUMP_END_LEGACY = 0,
++	ARM64_ATF_MEMDUMP_END_HANG = 1,
++	ARM64_ATF_MEMDUMP_END_REBOOT = 2,
++	ARM64_ATF_MEMDUMP_END_RETURN = 3,
++};
++
++void arm64_atf_memory_dump(int reboot_timeout,
++			   enum arm64_atf_memdump_end_action action);
+ void arm64_atf_memory_dump_save_info(struct pt_regs *regs);
+ void arm64_atf_memory_dump_save_cpu_regs(struct pt_regs *regs, unsigned int cpu);
+ 
 --- a/arch/arm64/kernel/memdump.c
 +++ b/arch/arm64/kernel/memdump.c
 @@ -18,7 +18,10 @@
@@ -78,14 +119,51 @@
  #include <asm/kexec.h>
  #include <asm/cacheflush.h>
  
-@@ -76,7 +79,62 @@ static struct memdump_core_info *mdump_c
+@@ -29,7 +32,11 @@
+  * no return
+  */
+ #define MTK_SIP_EMERG_MEM_DUMP			0xC2000540
++#define MTK_SIP_EMERG_MEM_DUMP_CFG		0xC2000541
++
++#define MDUMP_CFG_DUMP_END_ACTION		3
++
+ 
+ /* core dump info */
+ #define MEMDUMP_CORE_VER			2
+ 
+@@ -76,7 +83,87 @@ static struct memdump_core_info *mdump_c
  static struct pt_regs *mdump_panic_regs;
  static size_t core_info_size;
  static bool warn_max_range;
  static DEFINE_PER_CPU(bool, mdump_panic_info_saved);
++static unsigned long mdump_position_mask = BIT(MTK_MEMDUMP_DUMP_DEFAULT);
 +static unsigned long mdump_panic_mask = BIT(MTK_MEMDUMP_PANIC_SYSRQ);
 +static DEFINE_PER_CPU(bool, mdump_panic_requested);
 +static DEFINE_PER_CPU(struct pt_regs *, mdump_panic_source_regs);
++
++int mtk_memdump_set_dump_enabled(enum mtk_memdump_dump_position position,
++				  bool enabled)
++{
++	if ((unsigned int)position >= MTK_MEMDUMP_DUMP_POSITION_MAX)
++		return -EINVAL;
++
++	if (enabled)
++		set_bit(position, &mdump_position_mask);
++	else
++		clear_bit(position, &mdump_position_mask);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(mtk_memdump_set_dump_enabled);
++
++bool mtk_memdump_get_dump_enabled(enum mtk_memdump_dump_position position)
++{
++	if ((unsigned int)position >= MTK_MEMDUMP_DUMP_POSITION_MAX)
++		return false;
++
++	return test_bit(position, &mdump_position_mask);
++}
++EXPORT_SYMBOL_GPL(mtk_memdump_get_dump_enabled);
 +
 +int mtk_memdump_set_panic_enabled(enum mtk_memdump_panic_type type,
 +				  bool enabled)
@@ -141,6 +219,47 @@
  
  static int log_ram_headers_callback(struct resource *res, void *arg)
  {
+@@ -231,23 +318,38 @@ static int prepare_mdump_core_info(void)
+ 	return 0;
+ }
+ 
+-void arm64_atf_memory_dump(int reboot_timeout)
++void arm64_atf_memory_dump(int reboot_timeout,
++			   enum arm64_atf_memdump_end_action action)
+ {
+ 	struct arm_smccc_res res;
+ 	uintptr_t core_pa = 0;
+ 
+ 	if (!mdump_core_info || !mdump_panic_regs) {
+ 		pr_err("Memory dump core info not available\n");
+ 	} else if (!prepare_mdump_core_info()) {
+ 		core_pa = __pa(mdump_core_info);
+ 	}
+ 
++	arm_smccc_smc(MTK_SIP_EMERG_MEM_DUMP_CFG, 1,
++		      MDUMP_CFG_DUMP_END_ACTION, action, 0, 0, 0, 0, &res);
++	if (res.a0) {
++		action = ARM64_ATF_MEMDUMP_END_LEGACY;
++		pr_warn("Failed to configure memory dump end action (%ld), "
++			"using legacy action\n", (long)res.a0);
++	}
++
+ 	pr_emerg("Starting Memory dump SMCC\n");
+ 
+ 	arm_smccc_smc(MTK_SIP_EMERG_MEM_DUMP, reboot_timeout, core_pa,
+ 		      0, 0, 0, 0, 0, &res);
+ 
+-	pr_err("Memory dump SMCC failed\n");
++	if (action == ARM64_ATF_MEMDUMP_END_RETURN && !res.a0) {
++		pr_emerg("Memory dump SMCC returned\n");
++		return;
++	}
++
++	pr_err("Memory dump SMCC unexpectedly returned (%ld)\n",
++	       (long)res.a0);
+ }
+ 
+ void arm64_atf_memory_dump_save_info(struct pt_regs *regs)
 --- a/arch/arm64/kernel/traps.c
 +++ b/arch/arm64/kernel/traps.c
 @@ -27,6 +27,7 @@
@@ -363,16 +482,32 @@
  	console_verbose();
  	bust_spinlocks(1);
  	va_start(args, fmt);
-@@ -426,7 +444,8 @@ void panic(const char *fmt, ...)
+@@ -382,6 +400,13 @@ void panic(const char *fmt, ...)
+ 	panic_other_cpus_shutdown(IS_ENABLED(CONFIG_MTK_ATF_MEMDUMP) ||
+ 				  _crash_kexec_post_notifiers);
+ 
++#ifdef CONFIG_MTK_ATF_MEMDUMP
++	if (mtk_memdump_panic_triggered() &&
++	    mtk_memdump_get_dump_enabled(MTK_MEMDUMP_DUMP_EARLY))
++		arm64_atf_memory_dump(panic_timeout,
++				     ARM64_ATF_MEMDUMP_END_RETURN);
++#endif
++
+ 	printk_legacy_allow_panic_sync();
+ 
+ 	/*
+@@ -426,7 +451,10 @@ void panic(const char *fmt, ...)
  	panic_print_sys_info(true);
  
  #ifdef CONFIG_MTK_ATF_MEMDUMP
 -	arm64_atf_memory_dump(panic_timeout);
-+	if (mtk_memdump_panic_triggered())
-+		arm64_atf_memory_dump(panic_timeout);
++	if (mtk_memdump_panic_triggered() &&
++	    mtk_memdump_get_dump_enabled(MTK_MEMDUMP_DUMP_DEFAULT))
++		arm64_atf_memory_dump(panic_timeout,
++				     ARM64_ATF_MEMDUMP_END_LEGACY);
  #endif
  
  	if (!panic_blink)
-@@ -759 +778 @@ void __warn(const char *file, int line,
+@@ -759 +787 @@ void __warn(const char *file, int line,
 -	check_panic_on_warn("kernel");
 +	check_panic_on_warn_regs("kernel", regs);

@@ -52,7 +52,7 @@
  subdir- += vdso vdso32
 --- a/arch/arm64/kernel/memdump.c
 +++ b/arch/arm64/kernel/memdump.c
-@@ -0,0 +1,392 @@
+@@ -0,0 +1,394 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2026 MediaTek Inc.
@@ -90,6 +90,7 @@
 +
 +/* core dump info */
 +#define MEMDUMP_CORE_VER			2
++#define MEMDUMP_F_PRECISE_CPU_CONTEXT		BIT(0)
 +
 +/* parameters */
 +#define MIN_RSVD_MEM_RANGES			8
@@ -111,7 +112,7 @@
 +	uintptr_t mem_ranges_pa;
 +	uintptr_t panic_regs_pa;	/* v2 */
 +	u32 panic_regs_valid;		/* v2 */
-+	u32 unused;			/* v2 */
++	u32 flags;			/* v2 */
 +};
 +
 +struct memdump_mem_range {
@@ -166,6 +167,7 @@
 +	mdump_core_info->ver = MEMDUMP_CORE_VER;
 +	mdump_core_info->nr_cpus = NR_CPUS;
 +	mdump_core_info->panic_cpu = smp_processor_id();
++	mdump_core_info->flags = MEMDUMP_F_PRECISE_CPU_CONTEXT;
 +
 +	note_buf = (uintptr_t *)((uintptr_t)mdump_core_info + sizeof(*mdump_core_info));
 +	if (crash_notes) {
@@ -430,7 +432,7 @@
 +static_assert(offsetof(struct memdump_core_info, mem_ranges_pa) == 80);
 +static_assert(offsetof(struct memdump_core_info, panic_regs_pa) == 88);
 +static_assert(offsetof(struct memdump_core_info, panic_regs_valid) == 96);
-+static_assert(offsetof(struct memdump_core_info, unused) == 100);
++static_assert(offsetof(struct memdump_core_info, flags) == 100);
 +static_assert(sizeof(struct memdump_mem_range) == 24);
 +static_assert(offsetof(struct memdump_mem_range, va_start) == 0);
 +static_assert(offsetof(struct memdump_mem_range, pa_start) == 8);

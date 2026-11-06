@@ -51,7 +51,7 @@
  subdir- += vdso vdso32
 --- a/arch/arm64/kernel/memdump.c
 +++ b/arch/arm64/kernel/memdump.c
-@@ -0,0 +1,303 @@
+@@ -0,0 +1,336 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2026 MediaTek Inc.
@@ -353,6 +353,39 @@
 +
 +	return 0;
 +}
++
++static_assert(sizeof(uintptr_t) == 8);
++static_assert(sizeof(size_t) == 8);
++static_assert(sizeof(struct memdump_core_info) == 104);
++static_assert(offsetof(struct memdump_core_info, crc) == 0);
++static_assert(offsetof(struct memdump_core_info, len) == 4);
++static_assert(offsetof(struct memdump_core_info, ver) == 8);
++static_assert(offsetof(struct memdump_core_info, nr_cpus) == 12);
++static_assert(offsetof(struct memdump_core_info, nr_mem_ranges) == 16);
++static_assert(offsetof(struct memdump_core_info, panic_cpu) == 20);
++static_assert(offsetof(struct memdump_core_info, note_buf_pa) == 24);
++static_assert(offsetof(struct memdump_core_info, note_buf_size) == 32);
++static_assert(offsetof(struct memdump_core_info, vmcoreinfo_note_pa) == 40);
++static_assert(offsetof(struct memdump_core_info, vmcoreinfo_note_size) == 48);
++static_assert(offsetof(struct memdump_core_info, kernel_va) == 56);
++static_assert(offsetof(struct memdump_core_info, kernel_pa) == 64);
++static_assert(offsetof(struct memdump_core_info, kernel_size) == 72);
++static_assert(offsetof(struct memdump_core_info, mem_ranges_pa) == 80);
++static_assert(offsetof(struct memdump_core_info, panic_regs_pa) == 88);
++static_assert(offsetof(struct memdump_core_info, panic_regs_valid) == 96);
++static_assert(offsetof(struct memdump_core_info, unused) == 100);
++static_assert(sizeof(struct memdump_mem_range) == 24);
++static_assert(offsetof(struct memdump_mem_range, va_start) == 0);
++static_assert(offsetof(struct memdump_mem_range, pa_start) == 8);
++static_assert(offsetof(struct memdump_mem_range, pa_end) == 16);
++static_assert(sizeof(struct pt_regs) == 336);
++static_assert(offsetof(struct pt_regs, user_regs) == 0);
++static_assert(offsetof(struct pt_regs, orig_x0) == 272);
++static_assert(offsetof(struct pt_regs, sdei_ttbr1) == 288);
++static_assert(offsetof(struct pt_regs, pmr_save) == 296);
++static_assert(offsetof(struct pt_regs, stackframe) == 304);
++static_assert(offsetof(struct pt_regs, lockdep_hardirqs) == 320);
++static_assert(offsetof(struct pt_regs, exit_rcu) == 328);
 +
 +subsys_initcall_sync(memdump_core_info_init);
 --- a/arch/arm64/kernel/smp.c

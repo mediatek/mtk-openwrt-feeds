@@ -11,11 +11,14 @@
  *   Copyright (C) 2016-2017 John Crispin <blogic@openwrt.org>
  */
 
+#include <linux/bitfield.h>
 #include <linux/netfilter_bridge.h>
 #include <linux/netfilter_ipv6.h>
 #include <linux/if_bridge.h>
 
 #include <net/arp.h>
+#include <net/dsfield.h>
+#include <net/inet_dscp.h>
 #include <net/neighbour.h>
 #include <net/netfilter/nf_conntrack_helper.h>
 #include <net/netfilter/nf_flow_table.h>
@@ -3672,41 +3675,121 @@ static unsigned int mtk_hnat_accel_type(struct sk_buff *skb)
 
 static void mtk_hnat_dscp_update(struct sk_buff *skb, struct foe_entry *entry)
 {
-	struct iphdr *iph;
-	struct ethhdr *eth;
-	struct ipv6hdr *ip6h;
-	bool flag = false;
+	u8 old_inner_dsfield = 0, new_inner_dsfield = 0;
+	struct hnat_info_blk2 *iblk2;
+	u8 new_dsfield, old_dsfield;
+	u16 h_proto, h_offset = 0;
+	struct iphdr *inner_iph;
+	bool relearn;
+	void *nh;
 
-	eth = eth_hdr(skb);
-	switch (ntohs(eth->h_proto)) {
+	h_proto = hnat_get_hdr_protocol(skb, &h_offset);
+	nh = skb_network_header(skb) + h_offset;
+
+	spin_lock_bh(&hnat_priv->entry_lock);
+
+	if (!entry_hnat_is_bound(entry))
+		goto unlock;
+
+	/* follow skb_to_hnat_info() and mtk_464xlat_fill_l3() */
+	switch (h_proto) {
 	case ETH_P_IP:
-		iph = ip_hdr(skb);
-		if (IS_IPV4_GRP(entry) && entry->ipv4_hnapt.iblk2.dscp != iph->tos) {
-			entry->ipv4_hnapt.iblk2.dscp = iph->tos;
-			flag = true;
+		new_dsfield = ipv4_get_dsfield(nh);
+		if (IS_IPV4_GRP(entry)) {
+			iblk2 = &entry->ipv4_hnapt.iblk2;
+			old_dsfield = iblk2->dscp;
+		} else if (IS_IPV4_DSLITE(entry) || IS_IPV4_MAPE(entry)) {
+			/* DS-Lite/MAP-E WAN->LAN */
+			iblk2 = &entry->ipv4_dslite.iblk2;
+			old_dsfield = iblk2->dscp;
+		} else if (IS_IPV6_6RD(entry)) {
+			/* 6RD LAN->WAN, 464XLAT WAN->LAN */
+			iblk2 = &entry->ipv6_6rd.iblk2;
+			old_dsfield = entry->ipv6_6rd.dscp;
+		} else {
+			goto unlock;
 		}
 		break;
 	case ETH_P_IPV6:
-		ip6h = ipv6_hdr(skb);
-		if ((IS_IPV6_3T_ROUTE(entry) || IS_IPV6_5T_ROUTE(entry)) &&
-			(entry->ipv6_5t_route.iblk2.dscp !=
-			(ip6h->priority << 4 | (ip6h->flow_lbl[0] >> 4)))) {
-			entry->ipv6_5t_route.iblk2.dscp =
-				(ip6h->priority << 4 | (ip6h->flow_lbl[0] >> 4));
-			flag = true;
+		new_dsfield = ipv6_get_dsfield(nh);
+		if (IS_IPV6_3T_ROUTE(entry) || IS_IPV6_5T_ROUTE(entry) ||
+		    IS_IPV6_HNAPT(entry) || IS_IPV6_HNAT(entry) ||
+		    IS_IPV6_6RD(entry)) {
+			/* 6RD here is WAN->LAN */
+			iblk2 = &entry->ipv6_5t_route.iblk2;
+			old_dsfield = iblk2->dscp;
+		} else if (IS_IPV4_DSLITE(entry) || IS_IPV4_MAPE(entry)) {
+			/* DS-Lite/MAP-E LAN->WAN, 464XLAT LAN->WAN */
+			iblk2 = &entry->ipv4_dslite.iblk2;
+			/* reverse of ppe_fill_flow_lbl() */
+			old_dsfield = entry->ipv4_dslite.priority << 4 |
+				      entry->ipv4_dslite.flow_lbl[2] >> 4;
+
+			/* MAP-E also records the inner IPv4 header */
+			if (IS_IPV4_MAPE(entry) &&
+			    ((struct ipv6hdr *)nh)->nexthdr == NEXTHDR_IPIP) {
+				old_inner_dsfield = iblk2->dscp;
+				inner_iph = (struct iphdr *)(skb_inner_network_header(skb) +
+							     h_offset);
+				new_inner_dsfield = ipv4_get_dsfield(inner_iph);
+			}
+		} else {
+			goto unlock;
 		}
 		break;
 	default:
-		return;
+		goto unlock;
 	}
 
-	if (flag) {
-		if (debug_level >= 7)
-			pr_info("%s %d update entry idx=%d\n", __func__, __LINE__,
-			skb_hnat_entry(skb));
-		/* clear HWNAT cache */
-		hnat_cache_clr(skb_hnat_ppe(skb));
+	if (new_dsfield == old_dsfield && new_inner_dsfield == old_inner_dsfield)
+		goto unlock;
+
+	/* re-learn WiFi entry so that TID follows the new DSCP,
+	 * ECN alone doesn't matter
+	 */
+	relearn = iblk2->winfoi &&
+		  inet_dsfield_to_dscp(new_dsfield) != inet_dsfield_to_dscp(old_dsfield);
+	if (relearn) {
+		__entry_delete(entry);
+	} else {
+		if (h_proto == ETH_P_IP && IS_IPV6_6RD(entry)) {
+			/* 6RD LAN->WAN, 464XLAT WAN->LAN */
+			entry->ipv6_6rd.dscp = new_dsfield;
+			/* only V2 and older keep the TOS inside the checksum base */
+			if (hnat_priv->data->version <= MTK_HNAT_V2)
+				entry->ipv6_6rd.hdr_chksum = ppe_get_chkbase(nh);
+		} else if (h_proto == ETH_P_IPV6 &&
+			   (IS_IPV4_DSLITE(entry) || IS_IPV4_MAPE(entry))) {
+			/* DS-Lite/MAP-E LAN->WAN, 464XLAT LAN->WAN */
+			entry->ipv4_dslite.priority = ((struct ipv6hdr *)nh)->priority;
+			ppe_fill_flow_lbl(entry, nh);
+			/* MAP-E inner IPv4 header */
+			if (new_inner_dsfield != old_inner_dsfield)
+				iblk2->dscp = new_inner_dsfield;
+		} else {
+			iblk2->dscp = new_dsfield;
+		}
+		dma_wmb();
 	}
+
+	spin_unlock_bh(&hnat_priv->entry_lock);
+
+	if (debug_level >= 7)
+		pr_info("%s %d update entry idx=%d\n", __func__, __LINE__,
+			skb_hnat_entry(skb));
+
+	if (relearn && debug_level >= 2)
+		pr_info("[%s]: delete entry idx = %d_%d, dscp %d->%d, re-learn TID\n",
+			__func__, skb_hnat_ppe(skb), skb_hnat_entry(skb),
+			FIELD_GET(INET_DSCP_MASK, old_dsfield),
+			FIELD_GET(INET_DSCP_MASK, new_dsfield));
+
+	/* clear HWNAT cache */
+	hnat_cache_clr(skb_hnat_ppe(skb));
+	return;
+
+unlock:
+	spin_unlock_bh(&hnat_priv->entry_lock);
 }
 
 static int mtk_464xlat_fill_mac(struct foe_entry *entry, struct sk_buff *skb,
@@ -4140,15 +4223,15 @@ static unsigned int mtk_hnat_nf_post_routing(
 		if (fn && !mtk_hnat_accel_type(skb))
 			break;
 
-		/* update dscp for qos */
-		mtk_hnat_dscp_update(skb, entry);
-
 		/* update mcast timestamp*/
 		if (hnat_priv->data->version == MTK_HNAT_V1_3 &&
 		    mcast_hook_toggle && entry->bfib1.sta == 1)
 			entry->ipv4_hnapt.m_timestamp = foe_timestamp(hnat_priv, true);
 
 		if (entry_hnat_is_bound(entry)) {
+			/* update dscp for qos */
+			mtk_hnat_dscp_update(skb, entry);
+
 			/* unshare if head cloned so sibling clones keep their hnat info */
 			if (!skb_shared(skb) && !skb_cow_head(skb, 0))
 				memset(skb_hnat_info(skb), 0, sizeof(struct hnat_desc));

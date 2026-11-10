@@ -1,0 +1,17 @@
+From: Weijie Gao <weijie.gao@mediatek.com>
+Subject: [PATCH] kernel-build.mk: do not strip kernel debug modules
+
+Only the full ELF file is usable for TRACE32/crash analysis
+
+Signed-off-by: Weijie Gao <weijie.gao@mediatek.com>
+
+--- a/include/kernel-build.mk
++++ b/include/kernel-build.mk
+@@ -65,7 +65,6 @@ ifdef CONFIG_COLLECT_KERNEL_DEBUG
+ 	-$(CP) \
+ 		$(STAGING_DIR_ROOT)/lib/modules/$(LINUX_VERSION)/*.ko \
+ 		$(KERNEL_BUILD_DIR)/debug/modules/
+-	$(FIND) $(KERNEL_BUILD_DIR)/debug -type f | $(XARGS) $(KERNEL_CROSS)strip --only-keep-debug
+ 	$(TAR) c -C $(KERNEL_BUILD_DIR) debug \
+ 		$(if $(SOURCE_DATE_EPOCH),--mtime="@$(SOURCE_DATE_EPOCH)") \
+ 		| zstd -T0 -f -o $(BIN_DIR)/kernel-debug.tar.zst

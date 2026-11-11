@@ -82,3 +82,6 @@ make V=s -j$(nproc)
 
 2. OpenWrt24.10 branch: [Kernel6.6 Release](https://github.com/mediatek/mtk-openwrt-feeds/blob/main/autobuild/unified/Readme.md)
 
+3. OpenWrt25.12 branch:
+   - Platform Only: [MediaTek_OpenWrt_2512_User_Guide](https://github.com/mediatek/mtk-openwrt-feeds/blob/main/autobuild/unified/doc/MediaTek_OpenWrt_2512_User_Guide.md)
+   - SoftMAC WiFi Driver: [Mediatek Upstream SoftMAC WiFi Driver - MT76 Release Note (OpenWrt 25.12/Kernel 6.12)](https://github.com/mediatek/mtk-openwrt-feeds/blob/main/autobuild/unified/Readme-6.12.md)

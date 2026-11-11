@@ -65,6 +65,7 @@ Note: Please follow the SOP below to upgrade the U-Boot image and GPT partition 
 ---
 
 ### Supported Chipsets
+- Filogic8800 802.11a/b/g/n/ac/ax/be/bn BN19000 2.4/5G/6GHz PCIe Chip
 - Filogic880/Filogic680/MT7996 802.11a/b/g/n/ac/ax/be BE19000/BE14000 2.4/5G/6GHz PCIe Chip
 - Filogic860/Filogic660/MT7992 802.11a/b/g/n/ac/ax/be BE7200/BE5000 2.4/5G PCIe Chip
 - Filogic850/Filogic660/MT7992 802.11a/b/g/n/ac/ax/be BE7200/BE5000 2.4/5G PCIe Chip
@@ -72,6 +73,9 @@ Note: Please follow the SOP below to upgrade the U-Boot image and GPT partition 
 ---
 
 ### Default EEPROM Bin
+- Filogic8800/BN19000 (4-4-4)
+  - eFEM: mt7999_eeprom.bin
+
 - Filogic880/BE19000 (4-4-4)
   - eFEM: mt7996_eeprom.bin
   - iFEM: mt7996_eeprom_2i5i6i.bin
@@ -92,6 +96,61 @@ Note: Please follow the SOP below to upgrade the U-Boot image and GPT partition 
 - Filogic850/BE3600 (2-3)
   - eFEM: mt7990_eeprom.bin
   - iFEM: mt7990_eeprom_2i5i.bin
+
+## Wi-Fi 8 Latest Release Version
+- **Date**: 2026-11-13
+- **Modified By**: Evelyn Tsai (evelyn.tsai@mediatek.com)
+- **Version**:
+  - Driver Version: 5.0.26.11
+  - Filogic8800 Firmware Version: 20261104T125931
+- **Document Reference**:
+  - MAC80211 MT76 Programming Guide v5.0
+  - MT76 Test Mode Programming Guide v3.0
+- **Summary**:
+  - WiFi8: Add Basic  UHR MAC/Phy Cap
+    - UHR-MCS 17/19/20/23
+    - 3888-bit LPDC (2*LDPC)
+    - Unequal Modulation (UEQM)
+    - 11bi - SAE w/ EPPKE
+    - Enhanced Long Range (ELR)
+    - Non-Primary Channel Access (NPCA) - available after 12.B
+  - WiFi 7 feature set from the previous release
+
+- **Default Wi-Fi Configuration**
+
+  |                  | 2g               | 5g               | 6g               | MLD                  |
+  |------------------|------------------|------------------|------------------|----------------------|
+  | **Channel**      | Ch1              | Ch36             | Ch37             | Ch1/36/37           |
+  | **Phymode**      | UHR MLO 1-link   | UHR MLO 1-link   | UHR MLO 1-link   | UHR MLO 3-link      |
+  | **Bandwidth**    | BW40             | BW160            | BW320            | BW40/160/320        |
+  | **Security**     | OPEN             | OPEN             | SAE              | RSNE: PSK2 (AKM2)   |
+  |                  |                  |                  |                  | RSNO: SAE (AKM8)    |
+  |                  |                  |                  |                  | RSNO2: SAE-EXT (AKM24) |
+  | **11vMBSS**      | Disable          | Disable          | Enable           |                      |
+
+#### Filogic 8880 WiFi8 Alpha Release (2026-11-13)
+```
+# Get OpenWrt 25.12 source code from Git Server
+git clone --branch openwrt-25.12 https://git.openwrt.org/openwrt/openwrt.git openwrt
+
+# Get mtk-openwrt-feeds source code
+git clone --branch main https://github.com/mediatek/mtk-openwrt-feeds.git
+
+# Choose one SKU to build (1st Build)
+cd openwrt
+
+# Select one SKU to build
+## All-In-One MTK Reference Board (RFB) and BananaPi BPI-R4
+bash ../mtk-openwrt-feeds/autobuild/unified/autobuild.sh filogic-mac80211-mt798x_rfb-wifi8_nic
+
+# Further Build (After 1st full build)
+bash ../mtk-openwrt-feeds/autobuild/unified/autobuild.sh build
+or
+make V=s
+
+# Clean OpenWrt source tree
+bash ../mtk-openwrt-feeds/autobuild/unified/autobuild.sh clean
+```
 
 ## Wi-Fi 7 Latest Release Version
 

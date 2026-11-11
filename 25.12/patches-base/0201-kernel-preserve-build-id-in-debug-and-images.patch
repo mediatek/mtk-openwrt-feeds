@@ -1,0 +1,41 @@
+From: Weijie Gao <weijie.gao@mediatek.com>
+Subject: [PATCH] kernel: preserve build ID in debug archive and images
+
+Collect the debug vmlinux saved from the normal kernel build instead of
+the vmlinux left by the subsequent initramfs build. Also preserve ELF
+note sections when generating stripped kernel images so the running
+kernel can read its build ID. Preserve module build IDs during package
+stripping as well.
+
+Signed-off-by: Weijie Gao <weijie.gao@mediatek.com>
+
+--- a/include/kernel-build.mk
++++ b/include/kernel-build.mk
+@@ -61,7 +61,8 @@ ifdef CONFIG_COLLECT_KERNEL_DEBUG
+   define Kernel/CollectDebug
+ 	rm -rf $(KERNEL_BUILD_DIR)/debug
+ 	mkdir -p $(KERNEL_BUILD_DIR)/debug/modules
+-	$(CP) $(LINUX_DIR)/vmlinux $(KERNEL_BUILD_DIR)/debug/
++	$(CP) $(KERNEL_BUILD_DIR)/vmlinux.debug \
++		$(KERNEL_BUILD_DIR)/debug/vmlinux
+ 	-$(CP) \
+ 		$(STAGING_DIR_ROOT)/lib/modules/$(LINUX_VERSION)/*.ko \
+ 		$(KERNEL_BUILD_DIR)/debug/modules/
+--- a/include/kernel-defaults.mk
++++ b/include/kernel-defaults.mk
+@@ -142,7 +142,7 @@ define Kernel/CompileModules/Default
+ 	$(CP) $(LINUX_DIR)/.config $(LINUX_DIR)/.config.modules.save
+ endef
+ 
+-OBJCOPY_STRIP = -R .reginfo -R .notes -R .note -R .comment -R .mdebug -R .note.gnu.build-id
++OBJCOPY_STRIP = -R .reginfo -R .comment -R .mdebug
+ 
+ # AMD64 shares the location with x86
+ ifeq ($(LINUX_KARCH),x86_64)
+--- a/scripts/strip-kmod.sh
++++ b/scripts/strip-kmod.sh
+@@ -21,4 +21,0 @@
+-if [ -z "$KEEP_BUILD_ID" ]; then
+-	ARGS="$ARGS -R .note.gnu.build-id"
+-fi
+-

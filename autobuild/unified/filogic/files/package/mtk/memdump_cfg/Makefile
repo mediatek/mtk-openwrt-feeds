@@ -17,6 +17,7 @@ include $(INCLUDE_DIR)/package.mk
 define KernelPackage/memdump-cfg
   SUBMENU:=Other modules
   TITLE:=Configuration helper for memdump
+  DEFAULT:=y if TARGET_mediatek
   FILES:=$(PKG_BUILD_DIR)/memdump-cfg.ko
   AUTOLOAD:=$(call AutoLoad,10,memdump-cfg,1)
   KCONFIG:=

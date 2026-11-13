@@ -15,6 +15,7 @@
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 #include <linux/arm-smccc.h>
+#include <linux/inet.h>
 #include <linux/uaccess.h>
 
 #if KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE
@@ -66,37 +67,17 @@ static const struct mdc_panic_control mdc_panic_controls[] = {
 };
 #endif
 
-static __be32 string_to_ip(const char *s)
+static int string_to_ip(const char *s, __be32 *addr)
 {
-	__be32 addr;
-	char *e;
-	int i;
+	const char *end;
 
-	addr = 0;
-	if (!s)
-		return addr;
+	if (!in4_pton(s, -1, (u8 *)addr, -1, &end))
+		return -EINVAL;
 
-	for (addr = 0, i = 0; i < 4; ++i) {
-		ulong val = s ? simple_strtoul(s, &e, 10) : 0;
-		if (val > 255) {
-			addr = 0;
-			return addr;
-		}
+	if (*end && (*end != '\n' || end[1]))
+		return -EINVAL;
 
-		if (i != 3 && *e != '.') {
-			addr = 0;
-			return addr;
-		}
-
-		addr <<= 8;
-		addr |= (val & 0xFF);
-
-		if (s)
-			s = (*e) ? e + 1 : e;
-	}
-
-	addr = htonl(addr);
-	return addr;
+	return 0;
 }
 
 static int user_input_to_ip(const char __user *buffer, size_t count,
@@ -105,7 +86,7 @@ static int user_input_to_ip(const char __user *buffer, size_t count,
 	char ipstr[64];
 
 	if (*pos)
-		return -ENOTSUPP;
+		return -EOPNOTSUPP;
 
 	if (count > sizeof(ipstr) - 1)
 		return -E2BIG;
@@ -115,9 +96,7 @@ static int user_input_to_ip(const char __user *buffer, size_t count,
 
 	ipstr[count] = 0;
 
-	*addr = string_to_ip(ipstr);
-
-	return 0;
+	return string_to_ip(ipstr, addr);
 }
 
 static int mdc_sip_display(struct seq_file *seq, void *v)
@@ -163,7 +142,7 @@ static ssize_t mdc_sip_write(struct file *file, const char __user *buffer,
 	return count;
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,6,0)
+#if KERNEL_VERSION(5, 6, 0) <= LINUX_VERSION_CODE
 static const struct proc_ops mdc_sip_fops = {
 	.proc_open  = mdc_sip_open,
 	.proc_read = seq_read,
@@ -224,7 +203,7 @@ static ssize_t mdc_dip_write(struct file *file, const char __user *buffer,
 	return count;
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,6,0)
+#if KERNEL_VERSION(5, 6, 0) <= LINUX_VERSION_CODE
 static const struct proc_ops mdc_dip_fops = {
 	.proc_open  = mdc_dip_open,
 	.proc_read = seq_read,
@@ -329,7 +308,7 @@ static ssize_t mdc_dump_write(struct file *file,
 	int ret;
 
 	if (*pos)
-		return -ENOTSUPP;
+		return -EOPNOTSUPP;
 
 	if (!count || count > sizeof(input))
 		return -EINVAL;
@@ -408,7 +387,7 @@ static ssize_t mdc_panic_write(struct file *file, const char __user *buffer,
 	int ret;
 
 	if (*pos)
-		return -ENOTSUPP;
+		return -EOPNOTSUPP;
 
 	if (!count || count > sizeof(input))
 		return -EINVAL;

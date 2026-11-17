@@ -78,7 +78,7 @@ support
  
  	return buf_size;
  }
-@@ -3215,8 +3212,8 @@ static int mtk_rx_alloc(struct mtk_eth *
+@@ -3223,8 +3220,8 @@ static int mtk_rx_alloc(struct mtk_eth *
  		rx_dma_size = soc->rx.dma_size;
  	}
  
@@ -89,7 +89,7 @@ support
  	ring->data = kcalloc(rx_dma_size, sizeof(*ring->data),
  			     GFP_KERNEL);
  	if (!ring->data)
-@@ -3485,7 +3482,7 @@ static int mtk_hwlro_rx_init(struct mtk_
+@@ -3493,7 +3490,7 @@ static int mtk_hwlro_rx_init(struct mtk_
  
  	if (mtk_is_netsys_v3_or_greater(eth)) {
  		val = mtk_r32(eth, reg_map->pdma.rx_cfg);
@@ -98,7 +98,7 @@ support
  			MTK_RX_CFG_SDL_OFFSET), reg_map->pdma.rx_cfg);
  
  		lro_ctrl_dw0 |= MTK_PDMA_LRO_SDL << MTK_CTRL_DW0_SDL_OFFSET;
-@@ -5533,24 +5530,33 @@ static void mtk_uninit(struct net_device
+@@ -5541,24 +5538,33 @@ static void mtk_uninit(struct net_device
  
  static int mtk_change_mtu(struct net_device *dev, int new_mtu)
  {
@@ -138,7 +138,7 @@ support
  	return 0;
  }
  
-@@ -7138,6 +7144,8 @@ static int mtk_probe(struct platform_dev
+@@ -7150,6 +7156,8 @@ static int mtk_probe(struct platform_dev
  				   eth->netdev[i]->base_addr, eth->irq_fe[MTK_FE_IRQ_SHARED]);
  	}
  
@@ -163,6 +163,6 @@ support
  	spinlock_t			dim_lock;
  
 +	u32				rx_buf_len;
- 	u32				rx_events;
- 	u32				rx_packets;
- 	u32				rx_bytes;
+ 	atomic_t			rx_events;
+ 	atomic_t			rx_packets;
+ 	atomic_t			rx_bytes;

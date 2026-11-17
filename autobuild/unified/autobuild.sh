@@ -454,6 +454,8 @@ fi
 # Run stages
 log_dbg "All stages: ${ab_stages}"
 
+__ab_hook_violation=
+
 for stage in ${ab_stages}; do
 	substages=$(get_substages "${stage}")
 
@@ -484,6 +486,11 @@ for stage in ${ab_stages}; do
 
 			if test ${ret} != 0; then
 				log_err "${stage}/${substage}/${hook} exited with error code ${ret}"
+				exit 1
+			fi
+
+			if test -n "${__ab_hook_violation}"; then
+				log_err "${stage}/${substage}/${hook} violates design rules"
 				exit 1
 			fi
 		done

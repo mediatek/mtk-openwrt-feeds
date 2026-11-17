@@ -54,10 +54,37 @@ kernel_config_file=
 # Internal build parameters
 internal_build=
 gerrit_host=
+make_defconfig_done=
+openwrt_build_done=
+
+__check_openwrt_config_freeze() {
+	local ret=0
+
+	if test -n "${make_defconfig_done}"; then
+		log_err "Please don't change OpenWrt's config after hook 'make_defconfig'"
+		__ab_hook_violation=1
+		ret=1
+	fi
+
+	return ${ret}
+}
+
+__check_kernel_config_freeze() {
+	local ret=0
+
+	if test -n "${openwrt_build_done}"; then
+		log_err "Please don't change OpenWrt kernel's config after hook 'build_openwrt'"
+		__ab_hook_violation=1
+		ret=1
+	fi
+
+	return ${ret}
+}
 
 # Generic function for modifying openwrt config, to be compliant with menuconfig
 # $1:	Config name
 openwrt_config_disable() {
+	__check_openwrt_config_freeze
 	if test -z "${do_menuconfig}"; then
 		kconfig_disable "${openwrt_config_file}" "${1}"
 	fi
@@ -66,6 +93,7 @@ openwrt_config_disable() {
 # $1:	Config name
 # $2:	Value to be set for config (y if not specified)
 openwrt_config_enable() {
+	__check_openwrt_config_freeze
 	if test -z "${do_menuconfig}"; then
 		if ! kconfig_enabled "${openwrt_config_file}" "${1}"; then
 			kconfig_enable "${openwrt_config_file}" "${1}" "${2}"
@@ -75,6 +103,7 @@ openwrt_config_enable() {
 
 # $1:	Config file
 openwrt_config_merge() {
+	__check_openwrt_config_freeze
 	if test -z "${do_menuconfig}"; then
 		cat "${1}" >> "${openwrt_config_file}"
 	fi
@@ -88,12 +117,14 @@ openwrt_config_enabled() {
 # Generic function for modifying target's kernel config
 # $1:	Config name
 kernel_config_disable() {
+	__check_kernel_config_freeze
 	kconfig_disable "${kernel_config_file}" "${1}"
 }
 
 # $1:	Config name
 # $2:	Value to be set for config (y if not specified)
 kernel_config_enable() {
+	__check_kernel_config_freeze
 	if ! kconfig_enabled "${kernel_config_file}" "${1}"; then
 		kconfig_enable "${kernel_config_file}" "${1}" "${2}"
 	fi
@@ -345,6 +376,7 @@ make_defconfig() {
 	if test -f "${ab_tmp}/${ab_branch}.config" -a -f "${openwrt_root}/.config"; then
 		if ! cmp -s "${ab_tmp}/${ab_branch}.config" "${openwrt_root}/.config"; then
 			exec_log "make -C \"${openwrt_root}\" defconfig"
+			make_defconfig_done=1
 		fi
 	fi
 }
@@ -473,6 +505,8 @@ build_openwrt() {
 			return 1
 		fi
 	fi
+
+	openwrt_build_done=1
 
 	log_info "OpenWrt built successfully"
 }

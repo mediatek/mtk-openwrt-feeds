@@ -1,0 +1,39 @@
+# Distributed Llama. Two roles, independently enabled:
+#
+#   'api'    - root node: loads the model, serves an OpenAI-compatible API,
+#              and drives the workers listed below. Exactly one per cluster.
+#   'worker' - slice node: needs no model, just listens. Enable on every
+#              node except the root. Node count must be 1, 2, 4 or 8.
+#
+# Model files are NOT shipped (2.2 GB for Qwen3 1.7B Q40) and only the root
+# node needs them. The board can reach huggingface.co even though the build
+# host cannot, so fetch them there:
+#
+#   mkdir -p /mnt/models && cd /mnt/models
+#   wget https://huggingface.co/b4rtaz/Qwen3-1.7B-Q40-Distributed-Llama/resolve/main/dllama_model_qwen3_1.7b_q40.m
+#   wget https://huggingface.co/b4rtaz/Qwen3-1.7B-Q40-Distributed-Llama/resolve/main/dllama_tokenizer_qwen3_1.7b.t
+#
+# Only q40 model + q80 buffer, or f32 + f32, are supported quantizations.
+
+config dllama 'api'
+	option enabled 0
+	option model '/mnt/models/dllama_model_qwen3_1.7b_q40.m'
+	option tokenizer '/mnt/models/dllama_tokenizer_qwen3_1.7b.t'
+	option host '0.0.0.0'
+	option port '9990'
+	# MT7988 has 4 Cortex-A73 cores
+	option threads '4'
+	option buffer_float_type 'q80'
+	option max_seq_len '4096'
+	# One entry per WORKER node (the root is not listed). Leave empty for a
+	# single-board run. Must be 1, 3 or 7 entries (total nodes = 2^n).
+	#	list workers '192.168.1.2:9999'
+	#	list workers '192.168.1.3:9999'
+	#	list workers '192.168.1.4:9999'
+	option extra_args ''
+
+config dllama 'worker'
+	option enabled 0
+	option port '9999'
+	option threads '4'
+	option extra_args ''

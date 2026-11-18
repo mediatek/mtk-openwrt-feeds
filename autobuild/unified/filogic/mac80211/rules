@@ -8,7 +8,7 @@
 
 . ${ab_global}/kasan.sh
 list_add_after $(hooks autobuild_prepare) wifi_change_kernel_config change_kernel_coredump_conf
-list_add_after $(hooks autobuild_prepare) change_kernel_coredump_conf change_openwrt_relayd_conf
+list_add_after $(hooks autobuild_prepare) variant_change_openwrt_config change_openwrt_relayd_conf
 
 change_kernel_coredump_conf() {
 	kernel_config_enable CONFIG_DEV_COREDUMP

@@ -1,0 +1,2 @@
+target/linux/generic/backport-6.12/743-06-v7.3-net-dsa-mt7530-check-bus_read-error-in-core_rmw.patch
+target/linux/generic/backport-6.12/743-07-v7.3-net-dsa-mt7530-check-CORE_PLL_GROUP4-access.patch

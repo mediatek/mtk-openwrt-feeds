@@ -23,7 +23,7 @@ Subject: [PATCH] net: pcs: mtk-lynxi: add autoneg off
 
 --- a/drivers/net/pcs/pcs-mtk-lynxi.c
 +++ b/drivers/net/pcs/pcs-mtk-lynxi.c
-@@ -142,24 +142,18 @@ static void mtk_pcs_lynxi_get_state(stru
+@@ -142,28 +142,18 @@ static void mtk_pcs_lynxi_get_state(stru
  				    struct phylink_link_state *state)
  {
  	struct mtk_pcs_lynxi *mpcs = pcs_to_mtk_pcs_lynxi(pcs);
@@ -31,7 +31,12 @@ Subject: [PATCH] net: pcs: mtk-lynxi: add autoneg off
 +	unsigned int bm, adv;
  
  	/* Read the BMSR and LPA */
--	regmap_read(mpcs->regmap, SGMSYS_PCS_CONTROL_1, &bm);
+-	if (regmap_read(mpcs->regmap, SGMSYS_PCS_CONTROL_1, &bm) ||
+-	    regmap_read(mpcs->regmap, SGMSYS_PCS_ADVERTISE, &adv)) {
+-		state->link = false;
+-		return;
+-	}
+-
 -	bmsr = FIELD_GET(SGMII_BMSR, bm);
 -
 -	if (state->interface == PHY_INTERFACE_MODE_2500BASEX) {
@@ -46,7 +51,6 @@ Subject: [PATCH] net: pcs: mtk-lynxi: add autoneg off
  		return;
  	}
  
--	regmap_read(mpcs->regmap, SGMSYS_PCS_ADVERTISE, &adv);
  	phylink_mii_c22_pcs_decode_state(state, neg_mode,
 -					 bmsr, FIELD_GET(SGMII_LPA, adv));
 +					 FIELD_GET(SGMII_BMSR, bm),

@@ -52,7 +52,7 @@
  subdir- += vdso vdso32
 --- a/arch/arm64/kernel/memdump.c
 +++ b/arch/arm64/kernel/memdump.c
-@@ -0,0 +1,394 @@
+@@ -0,0 +1,402 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2026 MediaTek Inc.
@@ -157,11 +157,8 @@
 +
 +static int prepare_mdump_core_info(void)
 +{
-+	struct memdump_mem_range *mem_ranges;
-+	struct crash_mem_priv cmpriv;
-+	size_t len, used_size;
 +	uintptr_t *note_buf;
-+	int ret;
++	size_t len;
 +	u32 cpu;
 +
 +	mdump_core_info->ver = MEMDUMP_CORE_VER;
@@ -194,22 +191,6 @@
 +	mdump_core_info->kernel_pa = __pa_symbol(_text);
 +	mdump_core_info->kernel_size = _end - _text;
 +
-+	mem_ranges = (struct memdump_mem_range *)((uintptr_t)note_buf + NR_CPUS * sizeof(uintptr_t));
-+	used_size = (uintptr_t)mem_ranges - (uintptr_t)mdump_core_info;
-+
-+	mdump_core_info->mem_ranges_pa = __pa(mem_ranges);
-+
-+	cmpriv.max_ranges = (core_info_size - used_size) / sizeof(struct memdump_mem_range);
-+	cmpriv.nr_ranges = 0;
-+	cmpriv.ranges = mem_ranges;
-+
-+	ret = walk_system_ram_res(0, -1, &cmpriv,
-+				  log_ram_headers_callback);
-+	if (ret)
-+		return ret;
-+
-+	mdump_core_info->nr_mem_ranges = cmpriv.nr_ranges;
-+
 +	for_each_possible_cpu(cpu)
 +		memcpy(&mdump_panic_regs[cpu + 1],
 +		       per_cpu_ptr(&mdump_cpu_regs, cpu),
@@ -222,7 +203,7 @@
 +
 +	len = sizeof(*mdump_core_info) +
 +	      NR_CPUS * sizeof(uintptr_t) +
-+	      cmpriv.nr_ranges * sizeof(struct memdump_mem_range);
++	      mdump_core_info->nr_mem_ranges * sizeof(struct memdump_mem_range);
 +
 +	mdump_core_info->len = len;
 +
@@ -383,8 +364,12 @@
 +
 +static int __init memdump_core_info_init(void)
 +{
++	struct memdump_mem_range *mem_ranges;
 +	u32 core_order, nr_ranges = 0;
-+	size_t size;
++	struct crash_mem_priv cmpriv;
++	size_t size, used_size;
++	uintptr_t *note_buf;
++	int ret;
 +
 +	walk_system_ram_res(0, -1, &nr_ranges, get_nr_ram_ranges_callback);
 +	nr_ranges += MIN_RSVD_MEM_RANGES;
@@ -400,6 +385,29 @@
 +	}
 +
 +	core_info_size = (1UL << core_order) * PAGE_SIZE;
++
++	note_buf = (uintptr_t *)((uintptr_t)mdump_core_info +
++				 sizeof(*mdump_core_info));
++	mem_ranges = (struct memdump_mem_range *)((uintptr_t)note_buf +
++						   NR_CPUS * sizeof(uintptr_t));
++	used_size = (uintptr_t)mem_ranges - (uintptr_t)mdump_core_info;
++
++	cmpriv.max_ranges = (core_info_size - used_size) /
++			    sizeof(struct memdump_mem_range);
++	cmpriv.nr_ranges = 0;
++	cmpriv.ranges = mem_ranges;
++
++	ret = walk_system_ram_res(0, -1, &cmpriv,
++				  log_ram_headers_callback);
++	if (ret) {
++		pr_warn("Failed to snapshot memory ranges: %d\n", ret);
++		free_pages((unsigned long)mdump_core_info, core_order);
++		mdump_core_info = NULL;
++		return ret;
++	}
++
++	mdump_core_info->mem_ranges_pa = __pa(mem_ranges);
++	mdump_core_info->nr_mem_ranges = cmpriv.nr_ranges;
 +
 +	size = (NR_CPUS + 1) * sizeof(struct pt_regs);
 +	mdump_panic_regs = (struct pt_regs *)alloc_zero_pages(size, NULL);

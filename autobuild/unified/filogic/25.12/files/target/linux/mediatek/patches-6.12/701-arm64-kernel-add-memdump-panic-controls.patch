@@ -219,7 +219,7 @@
  
  static int log_ram_headers_callback(struct resource *res, void *arg)
  {
-@@ -231,23 +318,38 @@ static int prepare_mdump_core_info(void)
+@@ -160,23 +260,38 @@ static int prepare_mdump_core_info(void)
  	return 0;
  }
  

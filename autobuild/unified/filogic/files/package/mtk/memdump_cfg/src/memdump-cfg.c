@@ -29,6 +29,7 @@
 #define MDC_NETMASK "netmask"
 #define MDC_EARLY_DUMP "early_dump"
 #define MDC_DEFAULT_DUMP "default_dump"
+#define MDC_NO_CORE_INFO "no_core_info"
 
 #define MTK_SIP_EMERG_MEM_DUMP_CFG		0xC2000541
 #define MDUMP_CFG_LOCAL_IP			0
@@ -44,11 +45,13 @@ static struct proc_dir_entry *mdc_netmask_entry;
 struct mdc_dump_control {
 	const char *name;
 	enum mtk_memdump_dump_position position;
+	bool no_core_info;
 };
 
 static const struct mdc_dump_control mdc_dump_controls[] = {
-	{ MDC_EARLY_DUMP, MTK_MEMDUMP_DUMP_EARLY },
-	{ MDC_DEFAULT_DUMP, MTK_MEMDUMP_DUMP_DEFAULT },
+	{ MDC_EARLY_DUMP, MTK_MEMDUMP_DUMP_EARLY, false },
+	{ MDC_DEFAULT_DUMP, MTK_MEMDUMP_DUMP_DEFAULT, false },
+	{ MDC_NO_CORE_INFO, 0, true },
 };
 
 struct mdc_panic_control {
@@ -286,9 +289,15 @@ static const struct file_operations mdc_netmask_fops = {
 #ifdef MDC_HAS_PANIC_CONTROLS
 static int mdc_dump_display(struct seq_file *seq, void *v)
 {
-	enum mtk_memdump_dump_position position = (uintptr_t)seq->private;
+	const struct mdc_dump_control *control = seq->private;
+	bool enabled;
 
-	seq_printf(seq, "%d\n", mtk_memdump_get_dump_enabled(position));
+	if (control->no_core_info)
+		enabled = mtk_memdump_get_no_core_info();
+	else
+		enabled = mtk_memdump_get_dump_enabled(control->position);
+
+	seq_printf(seq, "%d\n", enabled);
 	return 0;
 }
 
@@ -302,7 +311,7 @@ static ssize_t mdc_dump_write(struct file *file,
 			      loff_t *pos)
 {
 	struct seq_file *seq = file->private_data;
-	enum mtk_memdump_dump_position position = (uintptr_t)seq->private;
+	const struct mdc_dump_control *control = seq->private;
 	char input[2];
 	bool enabled;
 	int ret;
@@ -323,9 +332,13 @@ static ssize_t mdc_dump_write(struct file *file,
 		return -EINVAL;
 
 	enabled = input[0] == '1';
-	ret = mtk_memdump_set_dump_enabled(position, enabled);
-	if (ret)
-		return ret;
+	if (control->no_core_info) {
+		mtk_memdump_set_no_core_info(enabled);
+	} else {
+		ret = mtk_memdump_set_dump_enabled(control->position, enabled);
+		if (ret)
+			return ret;
+	}
 
 	return count;
 }
@@ -357,7 +370,7 @@ static int mdc_create_dump_controls(void)
 		control = &mdc_dump_controls[i];
 		if (!proc_create_data(control->name, 0644, mdc_entry,
 				      &mdc_dump_fops,
-				      (void *)(uintptr_t)control->position))
+				      (void *)control))
 			return -ENOMEM;
 	}
 

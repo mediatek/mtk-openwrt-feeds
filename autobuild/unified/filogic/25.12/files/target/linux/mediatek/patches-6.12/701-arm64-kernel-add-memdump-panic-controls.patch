@@ -1,6 +1,6 @@
 --- a/include/linux/mtk_memdump.h
 +++ b/include/linux/mtk_memdump.h
-@@ -0,0 +1,86 @@
+@@ -0,0 +1,97 @@
 +/* SPDX-License-Identifier: GPL-2.0-only */
 +#ifndef _LINUX_MTK_MEMDUMP_H
 +#define _LINUX_MTK_MEMDUMP_H
@@ -31,6 +31,8 @@
 +int mtk_memdump_set_dump_enabled(enum mtk_memdump_dump_position position,
 +				  bool enabled);
 +bool mtk_memdump_get_dump_enabled(enum mtk_memdump_dump_position position);
++void mtk_memdump_set_no_core_info(bool enabled);
++bool mtk_memdump_get_no_core_info(void);
 +int mtk_memdump_set_panic_enabled(enum mtk_memdump_panic_type type,
 +				  bool enabled);
 +bool mtk_memdump_get_panic_enabled(enum mtk_memdump_panic_type type);
@@ -49,6 +51,15 @@
 +
 +static inline bool
 +mtk_memdump_get_dump_enabled(enum mtk_memdump_dump_position position)
++{
++	return false;
++}
++
++static inline void mtk_memdump_set_no_core_info(bool enabled)
++{
++}
++
++static inline bool mtk_memdump_get_no_core_info(void)
 +{
 +	return false;
 +}
@@ -131,13 +142,14 @@
  /* core dump info */
  #define MEMDUMP_CORE_VER			2
  
-@@ -76,7 +83,87 @@ static struct memdump_core_info *mdump_c
+@@ -76,7 +83,100 @@ static struct memdump_core_info *mdump_c
  static struct pt_regs *mdump_panic_regs;
  static size_t core_info_size;
  static bool warn_max_range;
  static DEFINE_PER_CPU(bool, mdump_panic_info_saved);
 +static unsigned long mdump_position_mask = BIT(MTK_MEMDUMP_DUMP_DEFAULT);
 +static unsigned long mdump_panic_mask = BIT(MTK_MEMDUMP_PANIC_SYSRQ);
++static bool mdump_no_core_info;
 +static DEFINE_PER_CPU(bool, mdump_panic_requested);
 +static DEFINE_PER_CPU(struct pt_regs *, mdump_panic_source_regs);
 +
@@ -164,6 +176,18 @@
 +	return test_bit(position, &mdump_position_mask);
 +}
 +EXPORT_SYMBOL_GPL(mtk_memdump_get_dump_enabled);
++
++void mtk_memdump_set_no_core_info(bool enabled)
++{
++	WRITE_ONCE(mdump_no_core_info, enabled);
++}
++EXPORT_SYMBOL_GPL(mtk_memdump_set_no_core_info);
++
++bool mtk_memdump_get_no_core_info(void)
++{
++	return READ_ONCE(mdump_no_core_info);
++}
++EXPORT_SYMBOL_GPL(mtk_memdump_get_no_core_info);
 +
 +int mtk_memdump_set_panic_enabled(enum mtk_memdump_panic_type type,
 +				  bool enabled)
@@ -219,7 +243,7 @@
  
  static int log_ram_headers_callback(struct resource *res, void *arg)
  {
-@@ -160,23 +260,38 @@ static int prepare_mdump_core_info(void)
+@@ -160,23 +260,39 @@ static int prepare_mdump_core_info(void)
  	return 0;
  }
  
@@ -230,11 +254,17 @@
  	struct arm_smccc_res res;
  	uintptr_t core_pa = 0;
  
- 	if (!mdump_core_info || !mdump_panic_regs) {
- 		pr_err("Memory dump core info not available\n");
- 	} else if (!prepare_mdump_core_info()) {
- 		core_pa = __pa(mdump_core_info);
- 	}
+-	if (!mdump_core_info || !mdump_panic_regs) {
+-		pr_err("Memory dump core info not available\n");
+-	} else if (!prepare_mdump_core_info()) {
+-		core_pa = __pa(mdump_core_info);
+-	}
++	if (!mtk_memdump_get_no_core_info()) {
++		if (!mdump_core_info || !mdump_panic_regs)
++			pr_err("Memory dump core info not available\n");
++		else if (!prepare_mdump_core_info())
++			core_pa = __pa(mdump_core_info);
++	}
  
 +	arm_smccc_smc(MTK_SIP_EMERG_MEM_DUMP_CFG, 1,
 +		      MDUMP_CFG_DUMP_END_ACTION, action, 0, 0, 0, 0, &res);
@@ -260,6 +290,14 @@
  }
  
  void arm64_atf_memory_dump_save_info(struct pt_regs *regs)
+@@ -219 +335,2 @@ noinline void arm64_atf_memory_dump_save_info(struct pt_regs *regs)
+-	if (!mdump_core_info || !mdump_panic_regs)
++	if (mtk_memdump_get_no_core_info() ||
++	    !mdump_core_info || !mdump_panic_regs)
+@@ -236 +353,2 @@ void arm64_atf_memory_dump_save_cpu_regs(struct pt_regs *regs, unsigned int cpu)
+-	if (!regs || !mdump_panic_regs || cpu >= NR_CPUS)
++	if (mtk_memdump_get_no_core_info() || !regs ||
++	    !mdump_panic_regs || cpu >= NR_CPUS)
 --- a/arch/arm64/kernel/traps.c
 +++ b/arch/arm64/kernel/traps.c
 @@ -27,6 +27,7 @@

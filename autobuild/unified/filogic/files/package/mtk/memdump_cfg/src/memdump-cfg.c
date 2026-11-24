@@ -16,6 +16,7 @@
 #include <linux/seq_file.h>
 #include <linux/arm-smccc.h>
 #include <linux/inet.h>
+#include <linux/mutex.h>
 #include <linux/uaccess.h>
 
 #if KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE
@@ -24,6 +25,7 @@
 #endif
 
 #define MDC "memdump"
+#define MDC_AVAILABLE "available"
 #define MDC_SIP "local_ip"
 #define MDC_DIP "dest_ip"
 #define MDC_NETMASK "netmask"
@@ -37,9 +39,11 @@
 #define MDUMP_CFG_LOCAL_SUBNET_MASK		2
 
 static struct proc_dir_entry *mdc_entry;
+static struct proc_dir_entry *mdc_available_entry;
 static struct proc_dir_entry *mdc_sip_entry;
 static struct proc_dir_entry *mdc_dip_entry;
 static struct proc_dir_entry *mdc_netmask_entry;
+static DEFINE_MUTEX(mdc_ip_lock);
 
 #ifdef MDC_HAS_PANIC_CONTROLS
 struct mdc_dump_control {
@@ -107,8 +111,10 @@ static int mdc_sip_display(struct seq_file *seq, void *v)
 	struct arm_smccc_res res = {0};
 	uint8_t addr[4];
 
+	mutex_lock(&mdc_ip_lock);
 	arm_smccc_smc(MTK_SIP_EMERG_MEM_DUMP_CFG, 0,
 		       MDUMP_CFG_LOCAL_IP, 0, 0, 0, 0, 0, &res);
+	mutex_unlock(&mdc_ip_lock);
 
 	if (res.a0)
 		return -EINVAL;
@@ -136,8 +142,10 @@ static ssize_t mdc_sip_write(struct file *file, const char __user *buffer,
 	if (ret)
 		return ret;
 
+	mutex_lock(&mdc_ip_lock);
 	arm_smccc_smc(MTK_SIP_EMERG_MEM_DUMP_CFG, 1,
 		       MDUMP_CFG_LOCAL_IP, addr, 0, 0, 0, 0, &res);
+	mutex_unlock(&mdc_ip_lock);
 
 	if (res.a0)
 		return -EINVAL;
@@ -168,8 +176,10 @@ static int mdc_dip_display(struct seq_file *seq, void *v)
 	struct arm_smccc_res res = {0};
 	uint8_t addr[4];
 
+	mutex_lock(&mdc_ip_lock);
 	arm_smccc_smc(MTK_SIP_EMERG_MEM_DUMP_CFG, 0,
 		       MDUMP_CFG_DEST_IP, 0, 0, 0, 0, 0, &res);
+	mutex_unlock(&mdc_ip_lock);
 
 	if (res.a0)
 		return -EINVAL;
@@ -197,8 +207,10 @@ static ssize_t mdc_dip_write(struct file *file, const char __user *buffer,
 	if (ret)
 		return ret;
 
+	mutex_lock(&mdc_ip_lock);
 	arm_smccc_smc(MTK_SIP_EMERG_MEM_DUMP_CFG, 1,
 		       MDUMP_CFG_DEST_IP, addr, 0, 0, 0, 0, &res);
+	mutex_unlock(&mdc_ip_lock);
 
 	if (res.a0)
 		return -EINVAL;
@@ -220,6 +232,64 @@ static const struct file_operations mdc_dip_fops = {
 	.read = seq_read,
 	.write = mdc_dip_write,
 	.llseek  = seq_lseek,
+	.release = single_release,
+};
+#endif
+
+static int mdc_available_display(struct seq_file *seq, void *v)
+{
+	struct arm_smccc_res res = {0};
+	u32 local_ip, dest_ip;
+	bool available = false;
+
+	mutex_lock(&mdc_ip_lock);
+
+	arm_smccc_smc(MTK_SIP_EMERG_MEM_DUMP_CFG, 0,
+		      MDUMP_CFG_LOCAL_IP, 0, 0, 0, 0, 0, &res);
+	if (res.a0)
+		goto out;
+	local_ip = res.a1;
+
+	arm_smccc_smc(MTK_SIP_EMERG_MEM_DUMP_CFG, 0,
+		      MDUMP_CFG_DEST_IP, 0, 0, 0, 0, 0, &res);
+	if (res.a0)
+		goto out;
+	dest_ip = res.a1;
+
+	arm_smccc_smc(MTK_SIP_EMERG_MEM_DUMP_CFG, 1,
+		      MDUMP_CFG_LOCAL_IP, local_ip, 0, 0, 0, 0, &res);
+	if (res.a0)
+		goto out;
+
+	arm_smccc_smc(MTK_SIP_EMERG_MEM_DUMP_CFG, 1,
+		      MDUMP_CFG_DEST_IP, dest_ip, 0, 0, 0, 0, &res);
+	if (!res.a0)
+		available = true;
+
+out:
+	mutex_unlock(&mdc_ip_lock);
+	seq_printf(seq, "%d\n", available);
+
+	return 0;
+}
+
+static int mdc_available_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, mdc_available_display, inode->i_private);
+}
+
+#if KERNEL_VERSION(5, 6, 0) <= LINUX_VERSION_CODE
+static const struct proc_ops mdc_available_fops = {
+	.proc_open = mdc_available_open,
+	.proc_read = seq_read,
+	.proc_lseek = seq_lseek,
+	.proc_release = single_release,
+};
+#else
+static const struct file_operations mdc_available_fops = {
+	.open = mdc_available_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
 	.release = single_release,
 };
 #endif
@@ -466,6 +536,14 @@ static int __init mdc_init(void)
 	mdc_entry = proc_mkdir(MDC, NULL);
 	if (!mdc_entry) {
 		pr_err("failed to create proc entry " MDC);
+		return -1;
+	}
+
+	mdc_available_entry = proc_create(MDC_AVAILABLE, 0444, mdc_entry,
+					  &mdc_available_fops);
+	if (!mdc_available_entry) {
+		pr_err("failed to create proc entry " MDC "/" MDC_AVAILABLE);
+		proc_remove(mdc_entry);
 		return -1;
 	}
 

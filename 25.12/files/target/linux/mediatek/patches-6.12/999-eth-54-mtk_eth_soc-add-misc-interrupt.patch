@@ -1,6 +1,16 @@
+---
+[v2] net: ethernet: mtk_eth_soc: add FE miscellaneous interrupts
+
+Without this patch, the ETH driver could not receive the miscellaneous
+interrupt to perform the NETSYS SER.
+---
+v2: Remove FE_INT_FQ_EMPTY interrupt to avoid false triggering of NETSYS SER.
+v1: Add FE miscellaneous interrupts.
+---
+
 --- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
 +++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
-@@ -344,6 +344,19 @@ static const char * const mtk_clks_sourc
+@@ -348,6 +348,19 @@ static const char * const mtk_clks_sourc
  	"top_netsys_warp_sel",
  };
  
@@ -20,7 +30,7 @@
  struct net_device *(*mtk_get_tnl_dev)(u8 tops_crsn) = NULL;
  EXPORT_SYMBOL(mtk_get_tnl_dev);
  
-@@ -4450,6 +4463,42 @@ static irqreturn_t mtk_handle_irq(int ir
+@@ -4463,6 +4476,41 @@ static irqreturn_t mtk_handle_irq(int ir
  	return IRQ_HANDLED;
  }
  
@@ -40,12 +50,11 @@
 +		val = __ffs(status);
 +		status &= ~BIT(val);
 +
-+		if (val != MTK_EVENT_FQ_EMPTY &&
-+		    val != MTK_EVENT_TSO_FAIL &&
-+		    val != MTK_EVENT_TSO_ILLEGAL &&
-+		    val != MTK_EVENT_TSO_ALIGN &&
-+		    val != MTK_EVENT_RFIFO_OV &&
-+		    val != MTK_EVENT_RFIFO_UF)
++		if (val != MTK_FE_INT_TSO_FAIL &&
++		    val != MTK_FE_INT_TSO_ILLEGAL &&
++		    val != MTK_FE_INT_TSO_ALIGN &&
++		    val != MTK_FE_INT_RFIFO_OV &&
++		    val != MTK_FE_INT_RFIFO_UF)
 +			continue;
 +
 +		dev_err(eth->dev, "detect reset event: %s !\n",
@@ -63,22 +72,22 @@
  #ifdef CONFIG_NET_POLL_CONTROLLER
  static void mtk_poll_controller(struct net_device *dev)
  {
-@@ -5629,6 +5678,14 @@ static int mtk_hw_init(struct mtk_eth *e
+@@ -5646,6 +5694,14 @@ static int mtk_hw_init(struct mtk_eth *e
  		mtk_w32(eth, 0x21021000, MTK_FE_INT_GRP);
  	}
  
 +	if (mtk_is_netsys_v2_or_greater(eth)) {
 +		mtk_m32(eth, MTK_FE_INT_MISC, FIELD_PREP(MTK_FE_INT_MISC, MTK_FE_IRQ_MISC),
 +			     MTK_FE_INT_GRP);
-+		mtk_w32(eth, MTK_FE_INT_FQ_EMPTY | MTK_FE_INT_TSO_FAIL |
-+			     MTK_FE_INT_TSO_ILLEGAL | MTK_FE_INT_TSO_ALIGN |
-+			     MTK_FE_INT_RFIFO_OV | MTK_FE_INT_RFIFO_UF, MTK_FE_INT_ENABLE);
++		mtk_w32(eth, MTK_FE_INT_TSO_FAIL | MTK_FE_INT_TSO_ILLEGAL |
++			     MTK_FE_INT_TSO_ALIGN | MTK_FE_INT_RFIFO_OV |
++			     MTK_FE_INT_RFIFO_UF, MTK_FE_INT_ENABLE);
 +	}
 +
  	if (mtk_is_netsys_v3_or_greater(eth)) {
  		/* PSE dummy page mechanism */
  		mtk_w32(eth, PSE_DUMMY_WORK_GDM(1) | PSE_DUMMY_WORK_GDM(2) |
-@@ -7287,6 +7344,12 @@ static int mtk_probe(struct platform_dev
+@@ -7334,6 +7390,12 @@ static int mtk_probe(struct platform_dev
  			goto err_free_dev;
  
  		if (MTK_HAS_CAPS(eth->soc->caps, MTK_PDMA_INT)) {
@@ -101,7 +110,7 @@
  
  /* Frame Engine Interrupt Status 2 Register */
  #define MTK_FE_INT_STATUS2	0x28
-@@ -893,7 +894,10 @@
+@@ -897,7 +898,10 @@
  #define MTK_FE_IRQ_SHARED	0
  #define MTK_FE_IRQ_TX		1
  #define MTK_FE_IRQ_RX		2
@@ -113,7 +122,7 @@
  
  struct mtk_rx_dma {
  	unsigned int rxd1;
-@@ -1650,6 +1654,19 @@ struct mtk_soc_data {
+@@ -1654,6 +1658,19 @@ struct mtk_soc_data {
  
  #define MTK_DMA_MONITOR_TIMEOUT		msecs_to_jiffies(1000)
  
@@ -133,7 +142,7 @@
  /* currently no SoC has more than 3 macs */
  #define MTK_MAX_DEVS	3
  
-@@ -1711,8 +1728,8 @@ struct mtk_eth {
+@@ -1714,8 +1731,8 @@ struct mtk_eth {
  	struct net_device		*netdev[MTK_MAX_DEVS];
  	struct mtk_mac			*mac[MTK_MAX_DEVS];
  	struct mtk_mux			*mux[MTK_MAX_DEVS];

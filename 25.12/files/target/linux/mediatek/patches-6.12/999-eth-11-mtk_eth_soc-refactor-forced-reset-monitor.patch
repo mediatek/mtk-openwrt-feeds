@@ -1,10 +1,11 @@
 ---
-[v5] net: ethernet: mtk_eth_soc: refactor forced reset monitor
+[v6] net: ethernet: mtk_eth_soc: refactor forced reset monitor
 
 Refactor forced reset monitoring mechanism for improved error detection and recovery.
 This patch enhances reset condition detection, adds comprehensive state tracking,
 and improves recovery procedures for system stability.
 ---
+v6: Refactor GDM Tx hang condition to cover additional TXPAR hang states.
 v5: Refactor ADMA Rx and QDMA Tx hang condition.
 v4: Refactor GMAC TX hang condition for the NETSYS SER monitor.
 v3: Add mtk_stats_update() to the NETSYS SER monitor.
@@ -24,7 +25,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: refactor forced reset monitor
 
 --- a/drivers/net/ethernet/mediatek/mtk_eth_soc.c
 +++ b/drivers/net/ethernet/mediatek/mtk_eth_soc.c
-@@ -118,6 +118,7 @@ static const struct mtk_reg_map mt7628_r
+@@ -119,6 +119,7 @@ static const struct mtk_reg_map mt7628_r
  		.rx_ptr		= 0x0900,
  		.rx_cnt_cfg	= 0x0904,
  		.pcrx_ptr	= 0x0908,
@@ -32,7 +33,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: refactor forced reset monitor
  		.glo_cfg	= 0x0a04,
  		.rst_idx	= 0x0a08,
  		.delay_irq	= 0x0a0c,
-@@ -135,6 +136,7 @@ static const struct mtk_reg_map mt7986_r
+@@ -136,6 +137,7 @@ static const struct mtk_reg_map mt7986_r
  		.rx_ptr		= 0x4100,
  		.rx_cnt_cfg	= 0x4104,
  		.pcrx_ptr	= 0x4108,
@@ -40,7 +41,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: refactor forced reset monitor
  		.glo_cfg	= 0x4204,
  		.rst_idx	= 0x4208,
  		.delay_irq	= 0x420c,
-@@ -194,6 +196,7 @@ static const struct mtk_reg_map mt7988_r
+@@ -195,6 +197,7 @@ static const struct mtk_reg_map mt7988_r
  		.rx_ptr		= 0x6900,
  		.rx_cnt_cfg	= 0x6904,
  		.pcrx_ptr	= 0x6908,
@@ -48,7 +49,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: refactor forced reset monitor
  		.glo_cfg	= 0x6a04,
  		.rst_idx	= 0x6a08,
  		.delay_irq	= 0x6a0c,
-@@ -2744,12 +2747,12 @@ static int mtk_poll_tx(struct mtk_eth *e
+@@ -2776,12 +2779,12 @@ static int mtk_poll_tx(struct mtk_eth *e
  
  static void mtk_handle_status_irq(struct mtk_eth *eth)
  {
@@ -63,7 +64,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: refactor forced reset monitor
  	}
  }
  
-@@ -3784,7 +3787,7 @@ static void mtk_dma_free(struct mtk_eth
+@@ -3793,7 +3796,7 @@ static void mtk_dma_free(struct mtk_eth
  
  static bool mtk_hw_reset_check(struct mtk_eth *eth)
  {
@@ -72,7 +73,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: refactor forced reset monitor
  
  	return (val & MTK_FE_INT_FQ_EMPTY) || (val & MTK_FE_INT_RFIFO_UF) ||
  	       (val & MTK_FE_INT_RFIFO_OV) || (val & MTK_FE_INT_TSO_FAIL) ||
-@@ -4613,81 +4616,230 @@ static void mtk_hw_warm_reset(struct mtk
+@@ -4634,81 +4637,234 @@ static void mtk_hw_warm_reset(struct mtk
  			val, rst_mask);
  }
  
@@ -124,7 +125,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: refactor forced reset monitor
 +	bool iq_hang, oq_hang, adma_en, adma_full = false, adma_hang = true;
 +	bool wtx_busy, cdm_busy, oq_free;
 +	u32 adidx, wdidx, val;
-+	u32 cdma_rxfsm, gdm_txfsm, gdm_rxfsm;
++	u32 cdma_rxfsm, gdm_txfsm, gdm_rxfsm, gdm_txpar;
 +	u32 txgp_cnt, rxgp_cnt, rxfc_cnt;
  	bool qfsm_hang, qfwd_hang;
  	bool ret = false;
@@ -246,10 +247,13 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: refactor forced reset monitor
 +
 +skip_gmac:
 +		/* GDM Tx */
-+		gdm_txfsm = FIELD_GET(GENMASK(28, 16), mtk_r32(eth, MTK_FE_GDM_FSM(i)));
++		val = mtk_r32(eth, MTK_FE_GDM_FSM(i));
++		gdm_txfsm = FIELD_GET(GENMASK(19, 16), val);
++		gdm_txpar = FIELD_GET(GENMASK(23, 20), val);
 +		if (oq_hang && (txgp_cnt == eth->reset.gdm_txgp_cnt[i]) &&
 +		    (rxfc_cnt == eth->reset.gdm_rxfc_cnt[i]) &&
-+		    ((gdm_txfsm == eth->reset.gdm_txfsm[i]) && (gdm_txfsm == 0x1033))) {
++		    (gdm_txfsm == eth->reset.gdm_txfsm[i] && gdm_txfsm == 3) &&
++		    (gdm_txpar == eth->reset.gdm_txpar[i] && gdm_txpar != 0)) {
 +			if (++eth->reset.gdm_tx_hang_count[i] > 2) {
 +				dev_warn(eth->dev, "detect GDM%d Tx hang!\n", i + 1);
 +				eth->reset.gdm_tx_hang_count[i] = 0;
@@ -260,6 +264,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: refactor forced reset monitor
 +		}
 +		eth->reset.gdm_tx_hang_count[i] = 0;
 +		eth->reset.gdm_txfsm[i] = gdm_txfsm;
++		eth->reset.gdm_txpar[i] = gdm_txpar;
 +		eth->reset.gdm_txgp_cnt[i] = txgp_cnt;
 +		eth->reset.gdm_rxfc_cnt[i] = rxfc_cnt;
 +
@@ -367,7 +372,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: refactor forced reset monitor
  /* CDMP Ingress Control Register */
  #define MTK_CDMQ_IG_CTRL	0x1400
  #define MTK_CDMQ_STAG_EN	BIT(0)
-@@ -348,8 +351,6 @@
+@@ -350,8 +353,6 @@
  #define MTK_TX_DONE_INT0	BIT(0)
  #define MTK_TX_DONE_INT		MTK_TX_DONE_DLY
  
@@ -376,7 +381,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: refactor forced reset monitor
  /* QDMA Interrupt grouping registers */
  #define MTK_RLS_DONE_INT	BIT(0)
  
-@@ -708,6 +709,12 @@
+@@ -710,6 +711,12 @@
  #define MTK_FE_DROP_FC		0x248
  #define MTK_FE_DROP_PPE		0x24C
  
@@ -389,7 +394,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: refactor forced reset monitor
  #define MTK_MAC_FSM(x)		(0x1010C + ((x) * 0x100))
  
  #define MTK_FE_IRQ_SHARED	0
-@@ -954,6 +961,12 @@ enum mtk_pse_port {
+@@ -956,6 +963,12 @@ enum mtk_pse_port {
  	PSE_PORT_MAX
  };
  
@@ -402,7 +407,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: refactor forced reset monitor
  /* GMAC Identifier */
  enum mtk_gmac_id {
  	MTK_GMAC1_ID = 0,
-@@ -1286,6 +1299,7 @@ struct mtk_reg_map {
+@@ -1288,6 +1301,7 @@ struct mtk_reg_map {
  		u32	rx_ptr;			/* rx base pointer */
  		u32	rx_cnt_cfg;		/* rx max count configuration */
  		u32	pcrx_ptr;		/* rx cpu pointer */
@@ -410,7 +415,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: refactor forced reset monitor
  		u32	glo_cfg;		/* global configuration */
  		u32	rst_idx;		/* reset index */
  		u32	rx_cfg;			/* rx dma configuration */
-@@ -1508,10 +1522,21 @@ struct mtk_eth {
+@@ -1511,10 +1525,22 @@ struct mtk_eth {
  	struct {
  		struct delayed_work monitor_work;
  		atomic_t force;
@@ -421,6 +426,7 @@ Subject: [PATCH] net: ethernet: mtk_eth_soc: refactor forced reset monitor
 +		u32 gdm_txgp_cnt[3];
 +		u32 gdm_rxgp_cnt[3];
 +		u32 gdm_rxfc_cnt[3];
++		u32 gdm_txpar[3];
 +		u32 gdm_txfsm[3];
 +		u32 gdm_rxfsm[3];
 +		u32 cdma_rxfsm;

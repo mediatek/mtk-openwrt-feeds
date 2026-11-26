@@ -199,7 +199,7 @@ airoha_firmware_install() {
 
 copy_phy_firmware() {
 	if test x"${internal_sync_set}" != x"yes"; then
-		firmware_dir="target/linux/mediatek/files-${kernel_ver}/drivers/base/firmware_loader/builtin"
+		firmware_dir="target/linux/${target_name:-mediatek}/files-${kernel_ver}/drivers/base/firmware_loader/builtin"
 
 		# ensure the PHY firmware is located in the same directory when compiling the kernel's built-in PHY driver
 		copy_file "${openwrt_root}/package/kernel/as2xxxx/firmware/as21x1x_fw.bin" "${firmware_dir}"
